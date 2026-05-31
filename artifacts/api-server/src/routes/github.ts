@@ -147,6 +147,18 @@ class TokenPool {
 
 const tokenPool = new TokenPool();
 
+// ── HTML escaper for Telegram messages ───────────────────────────────────────
+// Telegram's HTML mode only supports a narrow subset of tags. Repo names,
+// file paths, and URLs from GitHub can contain <, >, & — escape them so they
+// don't break message structure or inject unintended markup.
+function escHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // ── Severity classifier ───────────────────────────────────────────────────────
 function severity(filePath: string, snippet: string): "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" {
   const t = (filePath + " " + snippet).toLowerCase();
@@ -192,7 +204,7 @@ async function sendTelegram(query: string, findings: Finding[]): Promise<void> {
   const header = [
     `🔴 <b>GH Dork — Crypto Data Exposed</b>`,
     ``,
-    `🔍 Query: <code>${query.substring(0, 120)}</code>`,
+    `🔍 Query: <code>${escHtml(query.substring(0, 120))}</code>`,
     ``,
     critical.length ? `💀 <b>CRITICAL:</b> ${critical.length} temuan` : null,
     high.length ? `🟠 <b>HIGH:</b> ${high.length} temuan` : null,
@@ -201,9 +213,9 @@ async function sendTelegram(query: string, findings: Finding[]): Promise<void> {
 
   const top = [...critical, ...high].slice(0, 5);
   const body = top.map((f, i) =>
-    `${i + 1}. ${f.severity === "CRITICAL" ? "🔴" : "🟠"} <b>${f.repo}</b>\n` +
-    `   📄 <code>${f.path}</code>\n` +
-    `   🔗 ${f.fileUrl}`
+    `${i + 1}. ${f.severity === "CRITICAL" ? "🔴" : "🟠"} <b>${escHtml(f.repo)}</b>\n` +
+    `   📄 <code>${escHtml(f.path)}</code>\n` +
+    `   🔗 ${escHtml(f.fileUrl)}`
   ).join("\n\n");
 
   const footer = findings.length > 5 ? `\n\n<i>...dan ${findings.length - 5} temuan lainnya</i>` : "";
@@ -486,10 +498,10 @@ async function sendAutoScanTelegram(findings: AutoScanFinding[]): Promise<void> 
 
   const top = [...critical, ...high].slice(0, 5);
   const body = top.map((f, i) =>
-    `${i + 1}. ${f.severity === "CRITICAL" ? "🔴" : "🟠"} <b>${f.repo}</b>\n` +
-    `   📄 <code>${f.path}</code>\n` +
-    `   🏷 <i>${f.queryLabel}</i>\n` +
-    `   🔗 ${f.fileUrl}`
+    `${i + 1}. ${f.severity === "CRITICAL" ? "🔴" : "🟠"} <b>${escHtml(f.repo)}</b>\n` +
+    `   📄 <code>${escHtml(f.path)}</code>\n` +
+    `   🏷 <i>${escHtml(f.queryLabel)}</i>\n` +
+    `   🔗 ${escHtml(f.fileUrl)}`
   ).join("\n\n");
 
   const footer = findings.length > 5 ? `\n\n<i>...dan ${findings.length - 5} temuan lainnya</i>` : "";
