@@ -605,6 +605,68 @@ const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   { label: "Rust mnemonic",              q: 'language:rust "mnemonic" NOT test NOT mock NOT example' },
   { label: "Rust Solana keypair",        q: 'language:rust "solana" "keypair" "secret" NOT test NOT mock' },
   { label: "Rust ethers key",            q: 'language:rust "ethers" "private_key" NOT test NOT mock' },
+
+  // ── More .env file variants ───────────────────────────────────────────────
+  { label: ".env.staging key",           q: 'filename:.env.staging "PRIVATE_KEY" OR "MNEMONIC"' },
+  { label: ".env.develop key",           q: 'filename:.env.develop "PRIVATE_KEY" OR "MNEMONIC"' },
+  { label: ".env.ci key",                q: 'filename:.env.ci "PRIVATE_KEY" OR "MNEMONIC"' },
+  { label: ".env.test key",              q: 'filename:.env.test "PRIVATE_KEY" OR "MNEMONIC"' },
+  { label: ".env.backup key",            q: 'filename:.env.backup "PRIVATE_KEY" OR "MNEMONIC"' },
+  { label: ".env.prod key",              q: 'filename:.env.prod "PRIVATE_KEY" OR "MNEMONIC"' },
+  { label: ".env.mainnet key",           q: 'filename:.env.mainnet "PRIVATE_KEY" OR "MNEMONIC"' },
+  { label: ".env.testnet key",           q: 'filename:.env.testnet "PRIVATE_KEY" OR "MNEMONIC"' },
+
+  // ── Ethers.js / Web3.js hardcoded patterns ────────────────────────────────
+  { label: "ethers Wallet.fromMnemonic", q: '"Wallet.fromMnemonic" language:javascript NOT test NOT spec NOT mock' },
+  { label: "ethers new Wallet key",      q: '"new ethers.Wallet" language:javascript NOT test NOT spec NOT mock' },
+  { label: "ethers Wallet.fromPhrase",   q: '"Wallet.fromPhrase" language:javascript NOT test NOT spec NOT mock' },
+  { label: "ethers TS Wallet key",       q: '"new ethers.Wallet" language:typescript NOT test NOT spec NOT mock' },
+  { label: "web3 accounts.privateToAccount", q: '"privateToAccount" language:javascript NOT test NOT spec NOT mock' },
+  { label: "viem privateKeyToAccount",   q: '"privateKeyToAccount" language:typescript NOT test NOT spec NOT mock' },
+
+  // ── TypeScript private key patterns ──────────────────────────────────────
+  { label: "TS hardcoded private key",   q: 'language:typescript "PRIVATE_KEY" NOT test NOT spec NOT mock NOT example NOT type' },
+  { label: "TS mnemonic hardcoded",      q: 'language:typescript "mnemonic" NOT test NOT spec NOT mock NOT example NOT interface' },
+
+  // ── Solana JS/TS SDK patterns ─────────────────────────────────────────────
+  { label: "Solana Keypair.fromSecret",  q: '"Keypair.fromSecretKey" NOT test NOT spec NOT mock NOT example' },
+  { label: "Solana bs58 secret key",     q: '"bs58.decode" "secretKey" NOT test NOT spec NOT mock' },
+  { label: "Solana wallet adapter key",  q: '"solanaKeypair" OR "solana_keypair" extension:json NOT test NOT example' },
+
+  // ── Python DeFi / Web3 patterns ──────────────────────────────────────────
+  { label: "Brownie mnemonic config",    q: 'filename:brownie-config.yaml "mnemonic" NOT example NOT test' },
+  { label: "Python eth_account key",     q: 'language:python "eth_account" "private_key" NOT test NOT spec NOT mock' },
+  { label: "Python Account.from_key",    q: 'language:python "Account.from_key" NOT test NOT spec NOT mock' },
+  { label: "Python hdwallet mnemonic",   q: 'language:python "HDWallet" "mnemonic" NOT test NOT spec NOT example' },
+
+  // ── Deployment & migration scripts ───────────────────────────────────────
+  { label: "deploy.js private key",      q: 'filename:deploy.js "PRIVATE_KEY" OR "privateKey" NOT test NOT example' },
+  { label: "deploy.ts private key",      q: 'filename:deploy.ts "PRIVATE_KEY" OR "privateKey" NOT test NOT example' },
+  { label: "deploy.py private key",      q: 'filename:deploy.py "PRIVATE_KEY" OR "private_key" NOT test NOT example' },
+  { label: "migration private key",      q: 'filename:migrate.js "PRIVATE_KEY" OR "mnemonic" NOT test NOT example' },
+  { label: "script dir .env private",   q: 'path:scripts filename:.env "PRIVATE_KEY" OR "MNEMONIC"' },
+
+  // ── CI/CD infrastructure files ────────────────────────────────────────────
+  { label: "docker-compose PRIVATE_KEY", q: 'filename:docker-compose.yml "PRIVATE_KEY" OR "MNEMONIC" NOT example' },
+  { label: "CircleCI private key",       q: 'path:.circleci "PRIVATE_KEY" OR "MNEMONIC" NOT example' },
+  { label: "GitLab CI private key",      q: 'filename:.gitlab-ci.yml "PRIVATE_KEY" OR "MNEMONIC" NOT example' },
+  { label: "Jenkinsfile private key",    q: 'filename:Jenkinsfile "PRIVATE_KEY" OR "MNEMONIC" NOT example' },
+
+  // ── Config & secrets files ────────────────────────────────────────────────
+  { label: "config.json private key",    q: 'filename:config.json "private_key" OR "privateKey" NOT test NOT example' },
+  { label: "config.yaml private key",    q: 'filename:config.yaml "private_key" OR "mnemonic" NOT test NOT example' },
+  { label: "config.yml private key",     q: 'filename:config.yml "private_key" OR "mnemonic" NOT test NOT example' },
+  { label: "secrets.json private key",   q: 'filename:secrets.json "private_key" OR "mnemonic" NOT test' },
+  { label: "secrets.yaml private key",   q: 'filename:secrets.yaml "private_key" OR "mnemonic" NOT test' },
+  { label: "appsettings private key",    q: 'filename:appsettings.json "privateKey" OR "mnemonic" NOT test NOT example' },
+
+  // ── Terraform / IaC patterns ──────────────────────────────────────────────
+  { label: "Terraform private key",      q: 'filename:terraform.tfvars "private_key" OR "mnemonic" NOT example' },
+  { label: "Terraform env private key",  q: 'extension:tf "private_key" NOT variable NOT example NOT test' },
+
+  // ── Jupyter Notebooks (data science / quant) ──────────────────────────────
+  { label: "Jupyter private key",        q: 'extension:ipynb "private_key" OR "PRIVATE_KEY" NOT example NOT test' },
+  { label: "Jupyter mnemonic",           q: 'extension:ipynb "mnemonic" NOT example NOT test' },
 ];
 
 export interface AutoScanFinding {

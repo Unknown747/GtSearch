@@ -9,6 +9,20 @@
 - Regex-based CRITICAL (format key asli seperti `0x[hex]{64}`, WIF key, ed25519:, xprv, dll) tetap selalu CRITICAL — tidak terpengaruh guard
 - File: `artifacts/api-server/src/routes/github.ts` (dua fungsi baru sebelum `severity()`, modifikasi blok keyword CRITICAL)
 
+### #23 Ekspansi Query Dork — Fokus Mnemonic & Private Key (+42 query baru)
+- **More .env variants** (8 query): `.env.staging`, `.env.develop`, `.env.ci`, `.env.test`, `.env.backup`, `.env.prod`, `.env.mainnet`, `.env.testnet` — variant yang sering lupa tidak di-gitignore
+- **Ethers.js / Web3.js patterns** (6 query): `Wallet.fromMnemonic`, `new ethers.Wallet`, `Wallet.fromPhrase` (ethers v6), `privateToAccount` (web3.js), `privateKeyToAccount` (viem), TypeScript variant
+- **TypeScript patterns** (2 query): `language:typescript "PRIVATE_KEY"` dan `"mnemonic"` dengan guard ketat
+- **Solana JS/TS SDK** (3 query): `Keypair.fromSecretKey`, `bs58.decode + secretKey`, `solanaKeypair JSON`
+- **Python DeFi** (4 query): `brownie-config.yaml mnemonic`, `eth_account private_key`, `Account.from_key`, `HDWallet mnemonic`
+- **Deployment & migration scripts** (5 query): `deploy.js/ts/py private_key`, `migrate.js mnemonic`, `path:scripts .env`
+- **CI/CD** (4 query): `docker-compose.yml`, `.circleci`, `.gitlab-ci.yml`, `Jenkinsfile`
+- **Config & secrets files** (6 query): `config.json/yaml/yml`, `secrets.json/yaml`, `appsettings.json`
+- **Terraform / IaC** (2 query): `.tfvars private_key`, `.tf private_key`
+- **Jupyter Notebooks** (2 query): `.ipynb private_key`, `.ipynb mnemonic` — data scientist/quant trader sering simpan key di notebook
+- Total auto-scan queries naik dari 74 → **116 query**
+- File: `artifacts/api-server/src/routes/github.ts` (array `AUTO_SCAN_QUERIES`)
+
 ### #22 Perbaikan Query — NOT example/sample/test/mock Guard
 - Tambah `NOT example NOT sample NOT template` ke seluruh query `filename:.env` (74 query total)
 - Tambah `NOT test NOT spec NOT mock` ke query bahasa: Python, Go, Rust, JavaScript
