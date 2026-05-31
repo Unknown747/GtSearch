@@ -664,19 +664,22 @@ function renderContent(data,error,loading) {
   if(loading) { area.innerHTML=[0,1,2,3,4].map(()=>`<div class="card" style="padding:10px;margin-bottom:6px"><div class="skeleton" style="height:12px;width:38%;margin-bottom:8px"></div><div class="skeleton" style="height:11px;width:62%;margin-bottom:8px"></div><div class="skeleton" style="height:56px;width:100%"></div></div>`).join(''); return; }
   if(error) { area.innerHTML=`<div class="banner banner-err"><span class="banner-icon">⚠</span><div><div class="banner-title">Pencarian Gagal</div><div class="banner-sub">${esc(error)}</div></div></div>`; return; }
   if(!data) { area.innerHTML=''; return; }
-  const totalPages=Math.ceil(Math.min(data.total_count,1000)/30);
+  const totalCount=data.total_count??0;
+  const totalPages=Math.ceil(Math.min(totalCount,1000)/30);
   const tgOk=S.config&&S.config.telegramConfigured;
-  let html=`<div class="results-meta"><span><span class="count-hi">${data.total_count.toLocaleString()}</span> hasil ditemukan${data.total_count>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>Hal. ${S.page} / ${totalPages||1}</span></div>`;
-  if(data.total_count>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Notifikasi CRITICAL/HIGH otomatis dikirim ke Telegram</div>`;
-  if(data.total_count>0) html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman.</div>`;
-  if(data.items.length===0) {
+  let html=`<div class="results-meta"><span><span class="count-hi">${totalCount.toLocaleString()}</span> hasil ditemukan${totalCount>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>Hal. ${S.page} / ${totalPages||1}</span></div>`;
+  if(totalCount>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Notifikasi CRITICAL/HIGH otomatis dikirim ke Telegram</div>`;
+  if(totalCount>0) html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman.</div>`;
+  if(!data.items||data.items.length===0) {
     html+=`<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil</div><div class="empty-sub">Coba query berbeda atau hapus filter scope</div></div>`;
   } else {
     data.items.forEach(item=>{
+      const repo=item.repository||{};
       const snippet=item.snippet||(item.text_matches&&item.text_matches[0]&&item.text_matches[0].fragment)||'';
-      const sev=item.severity||severity(item.path,snippet);
-      const upd=new Date(item.repository.updated_at).toLocaleDateString('id-ID');
-      html+=`<div class="result-card"><div class="result-top"><div class="result-links"><div><a href="${esc(item.repository.html_url)}" target="_blank" rel="noopener" class="result-repo">${esc(item.repository.full_name)}</a><span class="sep">/</span><a href="${esc(item.html_url)}" target="_blank" rel="noopener" class="result-file">${esc(item.path)} ↗</a></div><div class="result-meta-row"><span class="meta-item">⭐ ${item.repository.stargazers_count.toLocaleString()}</span><span class="meta-item">🕐 ${upd}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="copy-btn" data-copy="${esc(item.html_url)}" title="Salin URL">⎘</button></div></div>${snippet?`<pre class="snippet">${esc(snippet)}</pre>`:''}</div>`;
+      const sev=item.severity||severity(item.path||'',snippet);
+      const stars=(repo.stargazers_count??0).toLocaleString();
+      const upd=repo.updated_at?new Date(repo.updated_at).toLocaleDateString('id-ID'):'—';
+      html+=`<div class="result-card"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a><span class="sep">/</span><a href="${esc(item.html_url||'#')}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a></div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span><span class="meta-item">🕐 ${upd}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="copy-btn" data-copy="${esc(item.html_url||'')}" title="Salin URL">⎘</button></div></div>${snippet?`<pre class="snippet">${esc(snippet)}</pre>`:''}</div>`;
     });
     if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
   }
@@ -749,7 +752,7 @@ function renderHistory() {
     list.innerHTML=`<div class="card empty"><div class="empty-icon">⏳</div><div class="empty-title">No search history yet</div><div class="empty-sub">Searches will appear here automatically</div><button class="btn btn-outline" onclick="showView('search')" style="margin-top:12px;font-size:11px">🔍 Start Searching</button></div>`;
     return;
   }
-  list.innerHTML=entries.map(e=>`<div class="h-entry"><span style="color:var(--muted);flex-shrink:0">🔍</span><div style="flex:1;min-width:0"><div class="h-query" title="${esc(e.query)}">${esc(e.query)}</div><div class="h-sub"><span class="h-sub-item">🕐 ${rel(e.ts)}</span><span class="h-sub-item">≡ ${e.count.toLocaleString()} results</span></div></div><button class="rerun-btn" data-q="${esc(e.query)}">Re-run →</button></div>`).join('')+`<div class="h-limit">⚠ History disimpan di browser. Maks. 50 pencarian.</div>`;
+  list.innerHTML=entries.map(e=>`<div class="h-entry"><span style="color:var(--muted);flex-shrink:0">🔍</span><div style="flex:1;min-width:0"><div class="h-query" title="${esc(e.query)}">${esc(e.query)}</div><div class="h-sub"><span class="h-sub-item">🕐 ${rel(e.ts)}</span><span class="h-sub-item">≡ ${(e.count??0).toLocaleString()} results</span></div></div><button class="rerun-btn" data-q="${esc(e.query)}">Re-run →</button></div>`).join('')+`<div class="h-limit">⚠ History disimpan di browser. Maks. 50 pencarian.</div>`;
   list.querySelectorAll('.rerun-btn').forEach(b=>b.addEventListener('click',()=>rerun(b.dataset.q)));
 }
 function rerun(q) { document.getElementById('q-input').value=q; S.activeQuery=q; S.page=1; showView('search'); runSearch(); }
