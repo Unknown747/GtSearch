@@ -264,15 +264,52 @@ const CRITICAL_REGEXES: RegExp[] = [
   /\b[1-9A-HJ-NP-Za-km-z]{87,88}\b/,              // Solana keypair (base58, 64 bytes)
 ];
 
+/**
+ * Returns true when the snippet looks like an empty or placeholder value —
+ * e.g. `PRIVATE_KEY=""`, `private_key = None`, `mnemonic = "YOUR_MNEMONIC"`.
+ * Used to prevent keyword-based CRITICAL false-positives.
+ */
+function isPlaceholderValue(snippet: string): boolean {
+  const s = snippet;
+  // Empty assignment: key=""  key=''  key=  key: ""
+  if (/[=:]\s*["']?\s*["']?\s*(?:#.*)?$/.test(s)) return true;
+  // Common placeholder / template text
+  if (/[=:]\s*["']?\s*(?:your[-_\s]?(?:private[-_\s]?)?(?:key|secret|mnemonic|seed|token)|<[^>]{1,60}>|enter[-_\s]|change[-_\s]me|replace[-_\s]|add[-_\s]your|put[-_\s]your|insert[-_\s]|set[-_\s]your|todo|fixme|example[-_\s]?(?:key|secret)?|sample[-_\s]?(?:key|secret)?|placeholder|x{4,}|\*{4,}|0{8,}|none|null|undefined|n\/a|test[-_\s]?(?:key|secret)?|dummy|fake|mock)/i.test(s)) return true;
+  // ALL_CAPS_PLACEHOLDER pattern: = "SOME_KEY_HERE"
+  if (/[=:]\s*["'][A-Z_]{4,}(?:HERE|_HERE|_VALUE|_KEY|_SECRET|_TOKEN|_MNEMONIC)["']/.test(s)) return true;
+  // Django insecure default: SECRET_KEY = 'django-insecure-...'
+  if (/django-insecure/i.test(s)) return true;
+  // Very short hex that cannot be a real private key (< 32 hex chars)
+  if (/[=:]\s*["']?0x[0-9a-fA-F]{1,30}["']?\s*$/.test(s) && !/0x[0-9a-fA-F]{40,}/.test(s)) return true;
+  return false;
+}
+
+/**
+ * Returns true for file paths that are almost certainly template / test / doc files
+ * rather than real configuration with actual secrets.
+ */
+function isExampleOrTestFile(filePath: string): boolean {
+  const lo = filePath.toLowerCase();
+  return (
+    lo.includes(".example") || lo.includes(".sample") || lo.includes(".template") ||
+    lo.endsWith(".md") || lo.endsWith(".mdx") || lo.endsWith(".txt") || lo.endsWith(".rst") ||
+    lo.includes("_test.") || lo.includes(".test.") || lo.includes("/test/") || lo.includes("/tests/") ||
+    lo.includes("_spec.") || lo.includes(".spec.") || lo.includes("/spec/") || lo.includes("/specs/") ||
+    lo.includes("/fixture") || lo.includes("/mock") || lo.includes("/mocks/") ||
+    lo.includes("/example") || lo.includes("/examples/") ||
+    lo.includes("/docs/") || lo.includes("/doc/")
+  );
+}
+
 function severity(filePath: string, snippet: string): "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" {
   const raw = filePath + " " + snippet;
   const t = raw.toLowerCase();
 
-  // ── CRITICAL: regex confirms actual key value present ──────────────────────
+  // ── CRITICAL: regex confirms actual key value present (always trust format) ─
   for (const re of CRITICAL_REGEXES) { if (re.test(raw)) return "CRITICAL"; }
 
-  // ── CRITICAL: keywords strongly indicating a plaintext crypto secret ───────
-  if (
+  // ── CRITICAL: keywords only when value is NOT a placeholder/empty ─────────
+  const hasCriticalKeyword = (
     // Generic key/seed terms
     t.includes("private_key") || t.includes("privatekey") ||
     t.includes("mnemonic") || t.includes("seed phrase") || t.includes("seed_phrase") ||
@@ -315,7 +352,8 @@ function severity(filePath: string, snippet: string): "CRITICAL" | "HIGH" | "MED
     // Wallet files
     t.includes("keypair.json") || t.includes("wallet.dat") ||
     t.includes("utc--")
-  ) return "CRITICAL";
+  );
+  if (hasCriticalKeyword && !isPlaceholderValue(snippet) && !isExampleOrTestFile(filePath)) return "CRITICAL";
 
   // ── HIGH: exchange API secrets & trading credentials ───────────────────────
   if (
@@ -463,85 +501,85 @@ function queryDelayMs(): number {
 
 const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   // ── Seed phrases & mnemonics ─────────────────────────────────────────────
-  { label: "mnemonic .env",              q: 'filename:.env "MNEMONIC"' },
-  { label: "PRIVATE_KEY .env",           q: 'filename:.env "PRIVATE_KEY"' },
-  { label: "seed phrase .env",           q: 'filename:.env "SEED_PHRASE" OR "SECRET_RECOVERY_PHRASE"' },
-  { label: "Trust Wallet mnemonic",      q: '"trustwallet" "mnemonic" extension:json' },
-  { label: "MetaMask seed words",        q: '"metamask" "seed" "words" extension:json' },
-  { label: "seed phrase JS",             q: '"bip39" "mnemonic" "entropy" language:javascript' },
+  { label: "mnemonic .env",              q: 'filename:.env "MNEMONIC" NOT example NOT sample NOT template' },
+  { label: "PRIVATE_KEY .env",           q: 'filename:.env "PRIVATE_KEY" NOT example NOT sample NOT template' },
+  { label: "seed phrase .env",           q: 'filename:.env "SEED_PHRASE" OR "SECRET_RECOVERY_PHRASE" NOT example NOT sample' },
+  { label: "Trust Wallet mnemonic",      q: '"trustwallet" "mnemonic" extension:json NOT test NOT example' },
+  { label: "MetaMask seed words",        q: '"metamask" "seed" "words" extension:json NOT test NOT example' },
+  { label: "seed phrase JS",             q: '"bip39" "mnemonic" "entropy" language:javascript NOT test NOT spec' },
   { label: ".env.production key",        q: 'filename:.env.production "PRIVATE_KEY" OR "MNEMONIC"' },
-  { label: ".env.local key",             q: 'filename:.env.local "PRIVATE_KEY" OR "MNEMONIC"' },
+  { label: ".env.local key",             q: 'filename:.env.local "PRIVATE_KEY" OR "MNEMONIC" NOT example NOT sample' },
 
   // ── EVM Chains (ETH / BSC / AVAX / MATIC / ARB / OP) ────────────────────
-  { label: "ETH private key .env",       q: 'filename:.env "ETH_PRIVATE_KEY" OR "ETHEREUM_PRIVATE_KEY"' },
-  { label: "BSC private key",            q: 'filename:.env "BSC_PRIVATE_KEY" OR "BNB_PRIVATE_KEY"' },
-  { label: "AVAX private key",           q: 'filename:.env "AVAX_PRIVATE_KEY" OR "AVALANCHE_PRIVATE_KEY"' },
-  { label: "MATIC private key",          q: 'filename:.env "MATIC_PRIVATE_KEY" OR "POLYGON_PRIVATE_KEY"' },
-  { label: "deployer key",               q: '"DEPLOYER_PRIVATE_KEY" filename:.env' },
-  { label: "signer private key",         q: 'filename:.env "SIGNER_PRIVATE_KEY" OR "OPERATOR_PRIVATE_KEY"' },
+  { label: "ETH private key .env",       q: 'filename:.env "ETH_PRIVATE_KEY" OR "ETHEREUM_PRIVATE_KEY" NOT example NOT sample' },
+  { label: "BSC private key",            q: 'filename:.env "BSC_PRIVATE_KEY" OR "BNB_PRIVATE_KEY" NOT example NOT sample' },
+  { label: "AVAX private key",           q: 'filename:.env "AVAX_PRIVATE_KEY" OR "AVALANCHE_PRIVATE_KEY" NOT example NOT sample' },
+  { label: "MATIC private key",          q: 'filename:.env "MATIC_PRIVATE_KEY" OR "POLYGON_PRIVATE_KEY" NOT example NOT sample' },
+  { label: "deployer key",               q: '"DEPLOYER_PRIVATE_KEY" filename:.env NOT example NOT sample' },
+  { label: "signer private key",         q: 'filename:.env "SIGNER_PRIVATE_KEY" OR "OPERATOR_PRIVATE_KEY" NOT example NOT sample' },
 
   // ── Solana ────────────────────────────────────────────────────────────────
-  { label: "Solana private key",         q: 'filename:.env "SOLANA_PRIVATE_KEY" OR "SOL_PRIVATE_KEY"' },
-  { label: "Phantom wallet key",         q: 'filename:.env "PHANTOM_PRIVATE_KEY"' },
-  { label: "Solana keypair.json",        q: 'filename:keypair.json extension:json language:json "[" NOT "test"' },
+  { label: "Solana private key",         q: 'filename:.env "SOLANA_PRIVATE_KEY" OR "SOL_PRIVATE_KEY" NOT example NOT sample' },
+  { label: "Phantom wallet key",         q: 'filename:.env "PHANTOM_PRIVATE_KEY" NOT example NOT sample' },
+  { label: "Solana keypair.json",        q: 'filename:keypair.json extension:json language:json "[" NOT test NOT example' },
   { label: "Anchor wallet keypair",      q: 'filename:id.json path:.config/solana "[1," OR "[2,"' },
 
   // ── NEAR Protocol ─────────────────────────────────────────────────────────
-  { label: "NEAR private key",           q: 'filename:.env "NEAR_PRIVATE_KEY" OR "NEAR_SECRET"' },
+  { label: "NEAR private key",           q: 'filename:.env "NEAR_PRIVATE_KEY" OR "NEAR_SECRET" NOT example NOT sample' },
   { label: "NEAR credentials file",      q: 'filename:credentials.json "ed25519:" path:.near' },
 
   // ── Tron / TRX ───────────────────────────────────────────────────────────
-  { label: "Tron private key",           q: 'filename:.env "TRON_PRIVATE_KEY" OR "TRX_PRIVATE_KEY"' },
-  { label: "Tron key JS",                q: 'language:javascript "TronWeb" "privateKey"' },
+  { label: "Tron private key",           q: 'filename:.env "TRON_PRIVATE_KEY" OR "TRX_PRIVATE_KEY" NOT example NOT sample' },
+  { label: "Tron key JS",                q: 'language:javascript "TronWeb" "privateKey" NOT test NOT spec NOT mock' },
 
   // ── Cosmos / Terra / Polkadot ─────────────────────────────────────────────
-  { label: "Cosmos mnemonic",            q: 'filename:.env "COSMOS_MNEMONIC" OR "TERRA_MNEMONIC"' },
-  { label: "Polkadot seed",              q: 'filename:.env "DOT_MNEMONIC" OR "POLKADOT_MNEMONIC" OR "SUBSTRATE_SEED"' },
+  { label: "Cosmos mnemonic",            q: 'filename:.env "COSMOS_MNEMONIC" OR "TERRA_MNEMONIC" NOT example NOT sample' },
+  { label: "Polkadot seed",              q: 'filename:.env "DOT_MNEMONIC" OR "POLKADOT_MNEMONIC" OR "SUBSTRATE_SEED" NOT example NOT sample' },
 
   // ── Wallet files ─────────────────────────────────────────────────────────
-  { label: "Ethereum keystore.json",     q: 'filename:keystore.json "version" "crypto" "ciphertext"' },
+  { label: "Ethereum keystore.json",     q: 'filename:keystore.json "version" "crypto" "ciphertext" NOT test NOT example' },
   { label: "UTC-- wallet file",          q: 'filename:UTC-- "ciphertext"' },
-  { label: "wallet.json ciphertext",     q: 'filename:wallet.json "crypto" "ciphertext"' },
-  { label: "MetaMask vault",             q: 'filename:vault.json "data" "iv" "salt"' },
+  { label: "wallet.json ciphertext",     q: 'filename:wallet.json "crypto" "ciphertext" NOT test NOT example' },
+  { label: "MetaMask vault",             q: 'filename:vault.json "data" "iv" "salt" NOT test NOT example' },
   { label: "Exodus wallet backup",       q: 'filename:exodus.wallet.bak OR filename:exodus-backup' },
-  { label: "BIP32 xprv key",            q: '"xprv" extension:json OR extension:txt OR extension:env' },
+  { label: "BIP32 xprv key",            q: '"xprv" extension:json OR extension:txt OR extension:env NOT example NOT test' },
 
   // ── Exchange API Keys ─────────────────────────────────────────────────────
-  { label: "Binance API key",            q: 'filename:.env "BINANCE_API_KEY"' },
-  { label: "Coinbase API key",           q: 'filename:.env "COINBASE_API_KEY"' },
-  { label: "Kraken API key",             q: 'filename:.env "KRAKEN_API_KEY"' },
-  { label: "Bybit API key",              q: 'filename:.env "BYBIT_API_KEY"' },
-  { label: "OKX API key",               q: 'filename:.env "OKX_API_KEY" OR "OKEX_API_KEY"' },
-  { label: "KuCoin API key",             q: 'filename:.env "KUCOIN_API_KEY" OR "KUCOIN_KEY"' },
-  { label: "Huobi / HTX API key",        q: 'filename:.env "HUOBI_API_KEY" OR "HTX_API_KEY"' },
-  { label: "Gate.io API key",            q: 'filename:.env "GATE_API_KEY" OR "GATEIO_API_KEY"' },
-  { label: "Bitget API key",             q: 'filename:.env "BITGET_API_KEY"' },
-  { label: "MEXC API key",               q: 'filename:.env "MEXC_API_KEY"' },
-  { label: "Indodax / Tokocrypto key",   q: 'filename:.env "INDODAX_API_KEY" OR "TOKOCRYPTO_API_KEY"' },
+  { label: "Binance API key",            q: 'filename:.env "BINANCE_API_KEY" NOT example NOT sample' },
+  { label: "Coinbase API key",           q: 'filename:.env "COINBASE_API_KEY" NOT example NOT sample' },
+  { label: "Kraken API key",             q: 'filename:.env "KRAKEN_API_KEY" NOT example NOT sample' },
+  { label: "Bybit API key",             q: 'filename:.env "BYBIT_API_KEY" NOT example NOT sample' },
+  { label: "OKX API key",               q: 'filename:.env "OKX_API_KEY" OR "OKEX_API_KEY" NOT example NOT sample' },
+  { label: "KuCoin API key",             q: 'filename:.env "KUCOIN_API_KEY" OR "KUCOIN_KEY" NOT example NOT sample' },
+  { label: "Huobi / HTX API key",        q: 'filename:.env "HUOBI_API_KEY" OR "HTX_API_KEY" NOT example NOT sample' },
+  { label: "Gate.io API key",            q: 'filename:.env "GATE_API_KEY" OR "GATEIO_API_KEY" NOT example NOT sample' },
+  { label: "Bitget API key",             q: 'filename:.env "BITGET_API_KEY" NOT example NOT sample' },
+  { label: "MEXC API key",               q: 'filename:.env "MEXC_API_KEY" NOT example NOT sample' },
+  { label: "Indodax / Tokocrypto key",   q: 'filename:.env "INDODAX_API_KEY" OR "TOKOCRYPTO_API_KEY" NOT example NOT sample' },
 
   // ── Smart contract / DeFi ────────────────────────────────────────────────
-  { label: "Hardhat private key JS",     q: 'filename:hardhat.config.js "PRIVATE_KEY"' },
-  { label: "Hardhat private key TS",     q: 'filename:hardhat.config.ts "PRIVATE_KEY" OR "mnemonic"' },
-  { label: "Truffle mnemonic",           q: 'filename:truffle-config.js "mnemonic"' },
-  { label: "Foundry private_key",        q: 'filename:foundry.toml "private_key"' },
+  { label: "Hardhat private key JS",     q: 'filename:hardhat.config.js "PRIVATE_KEY" NOT example NOT test' },
+  { label: "Hardhat private key TS",     q: 'filename:hardhat.config.ts "PRIVATE_KEY" OR "mnemonic" NOT example NOT test' },
+  { label: "Truffle mnemonic",           q: 'filename:truffle-config.js "mnemonic" NOT example NOT test' },
+  { label: "Foundry private_key",        q: 'filename:foundry.toml "private_key" NOT example NOT test' },
   { label: "Anchor deploy key",          q: 'filename:Anchor.toml "wallet" path:.config/solana' },
 
   // ── RPC / Node Infrastructure ─────────────────────────────────────────────
-  { label: "Infura Project ID",          q: 'filename:.env "INFURA_PROJECT_ID"' },
-  { label: "Alchemy API key",            q: 'filename:.env "ALCHEMY_API_KEY"' },
-  { label: "Helius API key (Solana)",    q: 'filename:.env "HELIUS_API_KEY"' },
-  { label: "QuickNode token",            q: 'filename:.env "QUICKNODE_TOKEN" OR "QUICKNODE_API_KEY"' },
-  { label: "Moralis API key",            q: 'filename:.env "MORALIS_API_KEY"' },
-  { label: "Ankr API key",              q: 'filename:.env "ANKR_API_KEY"' },
+  { label: "Infura Project ID",          q: 'filename:.env "INFURA_PROJECT_ID" NOT example NOT sample' },
+  { label: "Alchemy API key",            q: 'filename:.env "ALCHEMY_API_KEY" NOT example NOT sample' },
+  { label: "Helius API key (Solana)",    q: 'filename:.env "HELIUS_API_KEY" NOT example NOT sample' },
+  { label: "QuickNode token",            q: 'filename:.env "QUICKNODE_TOKEN" OR "QUICKNODE_API_KEY" NOT example NOT sample' },
+  { label: "Moralis API key",            q: 'filename:.env "MORALIS_API_KEY" NOT example NOT sample' },
+  { label: "Ankr API key",              q: 'filename:.env "ANKR_API_KEY" NOT example NOT sample' },
 
   // ── NFT & IPFS ────────────────────────────────────────────────────────────
-  { label: "Pinata IPFS key",            q: 'filename:.env "PINATA_API_KEY" "PINATA_SECRET"' },
-  { label: "NFT Storage key",            q: 'filename:.env "NFT_STORAGE_API_KEY"' },
-  { label: "OpenSea API key",            q: 'filename:.env "OPENSEA_API_KEY"' },
+  { label: "Pinata IPFS key",            q: 'filename:.env "PINATA_API_KEY" "PINATA_SECRET" NOT example NOT sample' },
+  { label: "NFT Storage key",            q: 'filename:.env "NFT_STORAGE_API_KEY" NOT example NOT sample' },
+  { label: "OpenSea API key",            q: 'filename:.env "OPENSEA_API_KEY" NOT example NOT sample' },
 
   // ── GitHub Actions / CI-CD ───────────────────────────────────────────────
-  { label: "PRIVATE_KEY in workflow",    q: 'path:.github/workflows "PRIVATE_KEY" extension:yml' },
-  { label: "MNEMONIC in workflow",       q: 'path:.github/workflows "MNEMONIC" extension:yml' },
+  { label: "PRIVATE_KEY in workflow",    q: 'path:.github/workflows "PRIVATE_KEY" extension:yml NOT example' },
+  { label: "MNEMONIC in workflow",       q: 'path:.github/workflows "MNEMONIC" extension:yml NOT example' },
   { label: "BEGIN RSA in workflow",      q: 'path:.github/workflows "BEGIN RSA PRIVATE KEY"' },
   { label: "hardcoded PAT in CI",        q: 'path:.github/workflows "ghp_" OR "github_pat_"' },
 
@@ -550,23 +588,23 @@ const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   { label: "RSA Private Key",            q: '"BEGIN RSA PRIVATE KEY"' },
 
   // ── Python ────────────────────────────────────────────────────────────────
-  { label: "Python private key",         q: 'language:python "PRIVATE_KEY" OR "private_key"' },
-  { label: "Python mnemonic",            q: 'language:python "mnemonic" OR "seed_phrase"' },
-  { label: "Django SECRET_KEY",          q: 'filename:settings.py "SECRET_KEY"' },
+  { label: "Python private key",         q: 'language:python "PRIVATE_KEY" OR "private_key" NOT test NOT spec NOT mock NOT example' },
+  { label: "Python mnemonic",            q: 'language:python "mnemonic" OR "seed_phrase" NOT test NOT spec NOT example' },
+  { label: "Django SECRET_KEY",          q: 'filename:settings.py "SECRET_KEY" NOT "django-insecure" NOT example NOT test' },
   { label: "Python web3 privateKey",     q: 'language:python "web3" "private_key" NOT "test"' },
   { label: "Python AWS credential",      q: 'language:python "aws_access_key_id" "aws_secret_access_key"' },
 
   // ── Go ────────────────────────────────────────────────────────────────────
-  { label: "Go private key",             q: 'language:go "privateKey" OR "PrivateKey"' },
-  { label: "Go mnemonic",                q: 'language:go "mnemonic"' },
-  { label: "Go ethclient key",           q: 'language:go "ethclient" "private" NOT "test"' },
-  { label: "Go config private",          q: 'filename:config.go "PRIVATE_KEY" OR "PrivateKey"' },
+  { label: "Go private key",             q: 'language:go "privateKey" OR "PrivateKey" NOT test NOT mock NOT example' },
+  { label: "Go mnemonic",                q: 'language:go "mnemonic" NOT test NOT mock NOT example' },
+  { label: "Go ethclient key",           q: 'language:go "ethclient" "private" NOT test NOT mock' },
+  { label: "Go config private",          q: 'filename:config.go "PRIVATE_KEY" OR "PrivateKey" NOT test NOT example' },
 
   // ── Rust ──────────────────────────────────────────────────────────────────
-  { label: "Rust private key",           q: 'language:rust "private_key" OR "PRIVATE_KEY"' },
-  { label: "Rust mnemonic",              q: 'language:rust "mnemonic"' },
-  { label: "Rust Solana keypair",        q: 'language:rust "solana" "keypair" "secret"' },
-  { label: "Rust ethers key",            q: 'language:rust "ethers" "private_key" NOT "test"' },
+  { label: "Rust private key",           q: 'language:rust "private_key" OR "PRIVATE_KEY" NOT test NOT mock NOT example' },
+  { label: "Rust mnemonic",              q: 'language:rust "mnemonic" NOT test NOT mock NOT example' },
+  { label: "Rust Solana keypair",        q: 'language:rust "solana" "keypair" "secret" NOT test NOT mock' },
+  { label: "Rust ethers key",            q: 'language:rust "ethers" "private_key" NOT test NOT mock' },
 ];
 
 export interface AutoScanFinding {

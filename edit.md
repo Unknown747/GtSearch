@@ -1,5 +1,23 @@
 # Edit History — GH Dork
 
+## 2026-05-31 — Session 4: 2 Perubahan (#21–#22)
+
+### #21 Fix False Positive CRITICAL — Placeholder & Empty Value Guard
+- Tambah fungsi `isPlaceholderValue(snippet)`: deteksi nilai kosong/template seperti `PRIVATE_KEY=""`, `private_key = None`, `= "YOUR_KEY"`, `= 0x000...`, `= "xxx"`, `django-insecure`, dll.
+- Tambah fungsi `isExampleOrTestFile(filePath)`: deteksi file template/test seperti `.env.example`, `.env.sample`, `.template`, `.md`, `/test/`, `/spec/`, `/fixture/`, `/mock/`, `/docs/` dll.
+- Keyword-based CRITICAL sekarang hanya aktif jika `!isPlaceholderValue(snippet) && !isExampleOrTestFile(filePath)` — jika tidak terpenuhi, temuan jatuh ke level HIGH/MEDIUM secara alami
+- Regex-based CRITICAL (format key asli seperti `0x[hex]{64}`, WIF key, ed25519:, xprv, dll) tetap selalu CRITICAL — tidak terpengaruh guard
+- File: `artifacts/api-server/src/routes/github.ts` (dua fungsi baru sebelum `severity()`, modifikasi blok keyword CRITICAL)
+
+### #22 Perbaikan Query — NOT example/sample/test/mock Guard
+- Tambah `NOT example NOT sample NOT template` ke seluruh query `filename:.env` (74 query total)
+- Tambah `NOT test NOT spec NOT mock` ke query bahasa: Python, Go, Rust, JavaScript
+- Django: tambah `NOT "django-insecure"` ke `filename:settings.py "SECRET_KEY"` — filter placeholder default Django
+- Hardhat/Truffle/Foundry: tambah `NOT example NOT test` untuk konfigurasi smart contract
+- GitHub Actions workflows: tambah `NOT example`
+- Keystore/vault/wallet JSON files: tambah `NOT test NOT example`
+- File: `artifacts/api-server/src/routes/github.ts` (array `AUTO_SCAN_QUERIES`)
+
 ## 2026-05-31 — Session 3: 11 Perubahan (#10–#20)
 
 ### #15 Parallel Scan (⚡ 3–5× lebih cepat)
