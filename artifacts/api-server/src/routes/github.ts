@@ -1201,9 +1201,10 @@ async function runAutoScan(): Promise<void> {
       try {
         // ── #4 Incremental window: per-query date based on last hit ──────────
         const windowDays = queryWindowDays(label);
-        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - windowDays);
-        const rollingDate = cutoff.toISOString().slice(0, 10);
-        const url = `https://api.github.com/search/code?q=${encodeURIComponent(q + ` fork:false pushed:>${rollingDate}`)}&per_page=30&page=1&sort=indexed&order=desc`;
+        // Note: pushed: and fork: qualifiers are NOT valid in code search (/search/code)
+        // and will cause 422 errors. The query is used as-is; client-side filterRecentRepos
+        // handles age filtering on the returned items.
+        const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=30&page=1&sort=indexed&order=desc`;
         const headers: Record<string, string> = {
           Authorization: `token ${token}`,
           Accept: "application/vnd.github.text-match+json",
@@ -1219,12 +1220,28 @@ async function runAutoScan(): Promise<void> {
           if (remaining < 5) logger.warn({ remaining, token: `...${token.slice(-4)}`, label }, "Auto-scan: token nearly exhausted");
         }
 
-        if (r.status === 401 || r.status === 403) {
+        if (r.status === 401) {
           tokenPool.flagError(token); tokenPool.update(token, 0, resetSec);
-          logger.warn({ status: r.status, token: `...${token.slice(-4)}`, label }, "Auto-scan: token rejected");
+          logger.warn({ status: r.status, token: `...${token.slice(-4)}`, label }, "Auto-scan: token auth error");
           autoScanState.queriesSkipped++; continue;
         }
-        if (!r.ok) { logger.warn({ status: r.status, q }, "Auto-scan non-OK"); autoScanState.queriesSkipped++; continue; }
+        if (r.status === 403 || r.status === 429) {
+          // Rate limit hit — not an auth error; mark exhausted and wait for reset
+          tokenPool.update(token, 0, resetSec);
+          const retryAfter = r.headers.get("retry-after");
+          logger.warn({ status: r.status, token: `...${token.slice(-4)}`, label, resetSec, retryAfter }, "Auto-scan: token rate limited");
+          autoScanState.queriesSkipped++; continue;
+        }
+        if (r.status === 422) {
+          // Invalid query syntax — log body for debugging and skip
+          const errBody = await r.text().catch(() => "");
+          logger.warn({ q, body: errBody.slice(0, 200) }, "Auto-scan: invalid query (422), skipping");
+          autoScanState.queriesSkipped++; continue;
+        }
+        if (!r.ok) {
+          logger.warn({ status: r.status, q }, "Auto-scan non-OK");
+          autoScanState.queriesSkipped++; continue;
+        }
 
         const data = (await r.json()) as { items: GHItem[] };
         autoScanState.queriesCompleted++;

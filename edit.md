@@ -1,5 +1,22 @@
 # Edit History — GH Dork
 
+## 2026-05-31 — Session 9: Bug Fix — Auto-Scan 422 & Rate-Limit Handling
+
+### #41 Fix: Hapus `fork:false pushed:>` dari code search URL
+- **File:** `artifacts/api-server/src/routes/github.ts` (runWorker, baris ~1206)
+- **Root cause:** `fork:false` dan `pushed:>date` adalah qualifier untuk *repository search*, bukan *code search*. Ketika ditambahkan ke `/search/code?q=...`, GitHub mengembalikan HTTP 422 Unprocessable Entity untuk setiap query.
+- **Fix:** Hapus penambahan ` fork:false pushed:>${rollingDate}` dari URL construction. Query dikirim apa adanya. Date-filtering tetap dilakukan client-side via `filterRecentRepos`.
+
+### #42 Fix: Pisahkan 403 auth-error dari 403 rate-limit
+- **File:** `artifacts/api-server/src/routes/github.ts` (runWorker, baris ~1222)
+- **Root cause:** Kode sebelumnya memperlakukan 403 (rate-limit) sama seperti 401 (auth error) — memanggil `tokenPool.flagError()` yang bisa blacklist token valid.
+- **Fix:** HTTP 401 → `flagError` (auth error). HTTP 403/429 → hanya `update(token, 0, resetSec)` tanpa flag error (rate limit, token masih valid).
+- **Tambahan:** HTTP 422 kini log error body untuk debugging, lalu skip (bukan throw).
+
+### Hasil setelah fix
+- Auto-scan scan #1 menemukan **139 findings** tanpa satu pun 422 error
+- Query sukses: "mnemonic .env" (60 results, 2 pages), "Trust Wallet mnemonic" (58 results), "seed phrase JS" (60 results), dll.
+
 ## 2026-05-31 — Session 8: Enhancement Batch (#33–#40)
 
 ### #33 crypto-dorks.json — 68 Query Dork Kripto
