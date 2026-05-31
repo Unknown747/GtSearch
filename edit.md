@@ -1,31 +1,39 @@
 # Edit History — GH Dork
 
-## 2026-05-31 — Session 3: 3 New Features
+## 2026-05-31 — Session 3: 4 Perubahan (#10–#13)
 
-### #9 Export CSV/JSON
+### #10 Export CSV/JSON
 - Tombol ⬇ CSV dan ⬇ JSON di header "Temuan Terbaru" tab Auto-Scan
 - Endpoint: `GET /api/autoscan/export?format=csv|json`
 - CSV berisi kolom: timestamp, severity, repo, path, query, queryLabel, fileUrl
 - Download langsung via `<a>` click — tidak perlu library tambahan
+- File: `github.ts` (route baru), `index.html` (tombol + fungsi `exportFindings()`)
 
-### #10 Discord & Slack Webhook
+### #11 Discord & Slack Webhook
 - Notifikasi dikirim ke Discord dan Slack bersamaan dengan Telegram
 - Set `DISCORD_WEBHOOK_URL` dan/atau `SLACK_WEBHOOK_URL` di Replit Secrets
 - Status Discord/Slack tampil di sidebar (dot hijau = aktif, kuning = belum diset)
 - Berlaku untuk: manual search hits DAN auto-scan findings
 - Format pesan: plain text (Discord/Slack tidak support HTML Telegram)
+- File: `github.ts` (fungsi `sendDiscord()`, `sendSlack()`, update config endpoint), `index.html` (2 status row baru, update `updateStatus()`)
 
-### #11 Repo Blocklist
+### #12 Repo Blocklist
 - Blokir repo false positive dari UI — tidak akan muncul lagi di auto-scan
 - Disimpan permanen di `artifacts/api-server/data/blocklist.json`
 - Tombol 🚫 di setiap finding card auto-scan → confirm dialog → langsung terblokir
-- Manajemen manual: tambah/hapus repo di card "Blocklist" tab Auto-Scan
+- Manajemen manual: tambah/hapus repo di card "🚫 Repo Blocklist" tab Auto-Scan
 - Filter diterapkan di server-side dalam `processPage()` sebelum severity check
 - Endpoints: `GET/POST /api/autoscan/blocklist`, `DELETE /api/autoscan/blocklist/:index`
+- File: `github.ts` (load/save/CRUD blocklist, filter di processPage), `index.html` (card UI, fungsi `addToBlocklist()`, `removeFromBlocklist()`, `blockRepoFromBtn()`, `renderBlocklist()`, `fetchBlocklist()`)
+
+### #13 Preferensi Dokumentasi
+- Semua modifikasi, edit, dan penambahan fitur wajib dicatat di `edit.md`
+- Preferensi disimpan ke `replit.md` bagian "User preferences"
+- File: `replit.md`, `edit.md`
 
 ---
 
-## 2026-05-31 — Session 2: 6 Major Features
+## 2026-05-31 — Session 2: 6 Major Features (#1–#9)
 
 ### #1 Persistent Findings
 - Temuan auto-scan disimpan ke `artifacts/api-server/data/findings.json`
@@ -44,16 +52,27 @@
 - Return 429 jika melebihi limit
 - Cleanup otomatis entry stale tiap 5 menit
 
+### #4 Leaderboard Query
+- Tabel "🏆 Query Paling Produktif" di tab Auto-Scan
+- Menampilkan top-10 query berdasarkan jumlah finding, dengan bar visual
+- Data dari `autoScanState.queryHits` (per-query hit counter, persists process lifetime)
+- UI: `renderLeaderboard()` di `index.html`, medal emoji 🥇🥈🥉 untuk top 3
+
+### #5 Blockchain Explorer Links
+- CRITICAL cards tampilkan link langsung ke blockchain explorer (Etherscan, BSCScan, dll)
+- Deteksi alamat wallet via regex + keyword detection dari path + snippet
+- Fungsi: `detectExplorerLinks()` di `index.html` — client-side only, tanpa backend
+
 ### #6 Custom Queries
 - Tambah/hapus query GitHub sendiri dari UI tab Auto-Scan
 - Tersimpan di `artifacts/api-server/data/custom-queries.json` — survives restart
-- New endpoints: `GET/POST /api/autoscan/custom-queries`, `DELETE /api/autoscan/custom-queries/:index`
+- Endpoints: `GET/POST /api/autoscan/custom-queries`, `DELETE /api/autoscan/custom-queries/:index`
 - UI: card baru di halaman Auto-Scan dengan form input label + query + tombol hapus per item
 
 ### #7 Window Config
 - Dropdown "📅 Window cari" baru: pilih 7 / 14 / 30 hari (default 14)
 - Menggantikan hardcoded `14` di query `pushed:>DATE`
-- New endpoint: `POST /api/autoscan/window?days=`
+- Endpoint: `POST /api/autoscan/window?days=`
 - State di-sync ke dropdown saat `renderAutoScan()` dipanggil
 
 ### #8 Hash-Based Deduplication
@@ -61,6 +80,11 @@
 - File yang URL-nya sama tapi isinya berubah → terdeteksi sebagai finding baru
 - Fungsi: `findingKey(url, snippet)` menggunakan `crypto.createHash("md5")`
 - LOW/MEDIUM tetap tidak di-cache (hanya CRITICAL/HIGH yang masuk `seenFindings`)
+
+### #9 Data Persistence Path
+- Semua data disimpan ke `artifacts/api-server/data/` (bukan `dist/` — survives rebuild)
+- File: `findings.json`, `custom-queries.json`, `blocklist.json`
+- Direktori dibuat otomatis saat startup jika belum ada
 
 ---
 
