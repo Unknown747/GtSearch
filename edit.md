@@ -13,10 +13,19 @@
 - **Fix:** HTTP 401 → `flagError` (auth error). HTTP 403/429 → hanya `update(token, 0, resetSec)` tanpa flag error (rate limit, token masih valid).
 - **Tambahan:** HTTP 422 kini log error body untuk debugging, lalu skip (bukan throw).
 
-### #43 Fix: Hapus `pushed:>` injection dari manual search route
-- **File:** `artifacts/api-server/src/routes/github.ts` (route GET /api/github/search, baris ~1488)
-- **Root cause:** Manual search route juga auto-inject `pushed:>DATE` ke query — sama seperti auto-scan. Menghasilkan 422 dan error `ERROR_TYPE_QUERY_PARSING_FATAL` di UI.
-- **Fix:** Hapus blok auto-inject `pushed:>`. Query dikirim apa adanya ke GitHub API.
+### #43 Fix: Semua filter jadi client-side — hapus qualifier tidak valid dari seluruh kode
+- **File:** `artifacts/api-server/src/routes/github.ts`, `artifacts/api-server/public/index.html`
+- **Root cause (investigasi mendalam):**
+  - `fork:false` → HTTP 422 (tidak valid di code search)
+  - `pushed:>DATE` → HTTP 200 tapi **selalu 0 hasil** (qualifier repo search, bukan code search)
+  - `created:>DATE` → sama, 0 hasil di code search
+  - Auto-scan appended `fork:false pushed:>` → semua 422; manual search auto-inject `pushed:>` → selalu 0 hasil
+- **Fix server (`github.ts`):** Query dikirim apa adanya ke GitHub `/search/code` — tanpa append qualifier apapun
+- **Fix UI (`index.html`):**
+  - `doSearch()`: hapus `pushed:>` dan `created:>` dari query; hanya tambah `fork:true` saat "Exclude forks" dicentang OFF
+  - `renderContent()`: tambah client-side filter berdasarkan `repository.pushed_at` (f-active), `repository.created_at` (f-age), dan `repository.fork` (f-no-fork)
+  - Batch search: sama, hapus `fork:false` dan `pushed:>`
+- **Hasil:** `filename:.env "PRIVATE_KEY"` → 4,676 hasil ✅; `"MNEMONIC" NOT example` → 3,244 hasil ✅
 
 ### Hasil setelah fix
 - Auto-scan scan #1 menemukan **168 findings** tanpa satu pun 422 error

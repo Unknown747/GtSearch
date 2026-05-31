@@ -1201,9 +1201,10 @@ async function runAutoScan(): Promise<void> {
       try {
         // ── #4 Incremental window: per-query date based on last hit ──────────
         const windowDays = queryWindowDays(label);
-        // Note: pushed: and fork: qualifiers are NOT valid in code search (/search/code)
-        // and will cause 422 errors. The query is used as-is; client-side filterRecentRepos
-        // handles age filtering on the returned items.
+        // Note: pushed:> and fork:false are NOT usable in code search.
+        // pushed:> is syntactically accepted but always returns 0 results.
+        // fork:false returns 422. Neither qualifier works in /search/code.
+        // Age filtering is done client-side via filterRecentRepos (uses repo.pushed_at).
         const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=30&page=1&sort=indexed&order=desc`;
         const headers: Record<string, string> = {
           Authorization: `token ${token}`,
@@ -1485,8 +1486,9 @@ router.get("/github/search", async (req, res) => {
 
   const { token } = picked;
 
-  // Note: pushed: is a repository search qualifier — NOT valid in /search/code.
-  // Sending it causes HTTP 422. Query is used as-is.
+  // Note: pushed:> and fork:false do NOT work in /search/code.
+  // pushed:> is syntactically accepted but always returns 0 results.
+  // fork:false returns 422. Query is sent as-is; date/fork filtering is client-side.
   const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&sort=indexed&order=desc`;
   const headers: Record<string, string> = {
     Authorization: `token ${token}`,

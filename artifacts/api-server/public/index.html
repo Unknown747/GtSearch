@@ -1356,14 +1356,11 @@ function doSearch() {
   let q=document.getElementById('q-input').value.trim(); if(!q) return;
   const scope=document.getElementById('scope-input').value.trim();
   if(scope) q+=` user:${scope}`;
-  if(document.getElementById('f-no-fork').checked)   q+=' fork:false';
-  if(document.getElementById('f-active').checked){
-    const d=new Date(); d.setDate(d.getDate()-30);
-    q+=` pushed:>${d.toISOString().slice(0,10)}`;
-  }
+  // Note: fork:false → 422, pushed:> and created:> → valid HTTP but always 0 results in /search/code.
+  // All date/fork filtering is done client-side in renderContent (uses repository.pushed_at/fork).
+  // Only fork:true is added to INCLUDE forks (when user unchecks "Exclude forks").
+  if(!document.getElementById('f-no-fork').checked) q+=' fork:true';
   S.sortBySev=document.getElementById('f-sort-sev').checked;
-  const ageVal=document.getElementById('f-age').value;
-  if(ageVal) q+=` created:>${ageVal}-01-01`;
   S.seenUrls=new Set();
   S.activeQuery=q; S.page=1; runSearch();
 }
@@ -1420,11 +1417,23 @@ function renderContent(data,error,loading) {
     });
     const ignored=S.ignoredUrls;
     const onePerRepo=document.getElementById('f-one-per-repo').checked;
+    const noForkFilter=document.getElementById('f-no-fork').checked;
+    const activeFilter=document.getElementById('f-active').checked;
+    const ageVal=document.getElementById('f-age').value;
+    const cutoff30=activeFilter?Date.now()-30*24*60*60*1000:0;
+    const cutoffYear=ageVal?new Date(`${ageVal}-01-01`).getTime():0;
     const seenRepos=new Set();
     const deduped=items.filter(item=>{
       const u=item.html_url||'';
       if(S.seenUrls.has(u)||ignored.has(u)) return false;
-      const rn=(item.repository||{}).full_name||'';
+      const repo=item.repository||{};
+      const rn=repo.full_name||'';
+      // Client-side: exclude forks
+      if(noForkFilter&&repo.fork) return false;
+      // Client-side: only repos pushed within last 30d
+      if(activeFilter){const pt=new Date(repo.pushed_at||repo.updated_at||0).getTime(); if(pt<cutoff30) return false;}
+      // Client-side: only repos created after selected year
+      if(ageVal){const ct=new Date(repo.created_at||0).getTime(); if(ct<cutoffYear) return false;}
       if(onePerRepo&&rn&&seenRepos.has(rn)) return false;
       seenRepos.add(rn);
       return true;
@@ -1661,9 +1670,8 @@ async function runBatch(){
   for(const {q,label} of queries){
     try{
       let qFull=q;
-      if(noFork) qFull+=' fork:false';
-      if(activeFilter){const d=new Date();d.setDate(d.getDate()-30);qFull+=` pushed:>${d.toISOString().slice(0,10)}`;}
-      if(ageVal) qFull+=` created:>${ageVal}-01-01`;
+      // Only fork:true is a valid code-search qualifier; others are client-side
+      if(!noFork) qFull+=' fork:true';
       const r=await fetch(`/api/github/search?q=${encodeURIComponent(qFull)}&per_page=30&page=1`);
       const data=await r.json();
       if(r.ok&&data.items){data.items.forEach(item=>{item._batchLabel=label;});allItems.push(...data.items);totalCount+=data.total_count||0;}
