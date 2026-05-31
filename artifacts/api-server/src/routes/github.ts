@@ -331,6 +331,38 @@ function extractValuePreview(snippet: string, _filePath: string): string {
 }
 
 /**
+ * Computes a 0–100 confidence score for a finding based on multiple signals.
+ * Higher = more likely a real secret, not a placeholder or test file.
+ */
+function confidenceScore(filePath: string, snippet: string, sev: string): number {
+  let score = 0;
+  // Base from severity
+  if (sev === "CRITICAL") score += 50;
+  else if (sev === "HIGH") score += 30;
+  else score += 10;
+
+  // Regex-confirmed key format (+25)
+  if (CRITICAL_REGEXES.some(re => re.test(snippet))) score += 25;
+
+  // Not a placeholder (-20)
+  if (!isPlaceholderValue(snippet)) score += 10;
+  else score -= 20;
+
+  // Not a test/example file (+10 / -15)
+  if (!isExampleOrTestFile(filePath)) score += 10;
+  else score -= 15;
+
+  // Real assignment pattern present (+5)
+  if (/[=:]\s*["']?[0-9a-zA-Z+/]{20,}/.test(snippet)) score += 5;
+
+  // Path hints it's a real config file (+5)
+  const lo = filePath.toLowerCase();
+  if (lo.includes(".env") || lo.includes("config") || lo.includes("secret") || lo.includes("credential")) score += 5;
+
+  return Math.max(0, Math.min(100, score));
+}
+
+/**
  * Returns true for file paths that are almost certainly template / test / doc files
  * rather than real configuration with actual secrets.
  */
@@ -724,6 +756,22 @@ export interface AutoScanFinding {
   query: string;
   queryLabel: string;
   valuePreview: string;
+  confidence: number;
+}
+
+// ── Scan history (for trend chart, max 50 entries) ────────────────────────────
+interface ScanHistoryEntry { ts: number; critical: number; high: number; total: number; }
+const scanHistory: ScanHistoryEntry[] = [];
+
+// ── SSE clients (live refresh) ────────────────────────────────────────────────
+const sseClients = new Set<import("express").Response>();
+
+function notifySseClients(event: string, data: unknown): void {
+  if (!sseClients.size) return;
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(payload); } catch { sseClients.delete(res); }
+  }
 }
 
 const autoScanState = {
@@ -997,6 +1045,7 @@ async function runAutoScan(): Promise<void> {
         repo: item.repository.full_name, path: item.path,
         fileUrl: item.html_url, query: q, queryLabel: label,
         valuePreview: extractValuePreview(snippet, item.path),
+        confidence: confidenceScore(item.path, snippet, sev),
       };
       newFindings.push(finding);
       autoScanState.recentFindings.unshift(finding);
@@ -1110,6 +1159,16 @@ async function runAutoScan(): Promise<void> {
   autoScanState.totalNewFindings += newFindings.length;
   autoScanState.running = false;
   saveFindings();
+
+  // ── Scan history for trend chart ─────────────────────────────────────────
+  const critical = newFindings.filter(f => f.severity === "CRITICAL").length;
+  const high = newFindings.filter(f => f.severity === "HIGH").length;
+  scanHistory.push({ ts: Date.now(), critical, high, total: newFindings.length });
+  if (scanHistory.length > 50) scanHistory.shift();
+
+  // ── Notify SSE clients ────────────────────────────────────────────────────
+  if (newFindings.length > 0) notifySseClients("findings", { count: newFindings.length, critical, high, findings: newFindings.slice(0, 10) });
+  notifySseClients("scan-complete", { ts: Date.now(), newFindings: newFindings.length });
 
   // ── #5 Adaptive interval ──────────────────────────────────────────────────
   const prevIntervalMs = currentScanIntervalMs;
@@ -1351,7 +1410,8 @@ router.get("/github/search", async (req, res) => {
     const data = (await r.json()) as GitHubSearchResponse;
     const enriched = data.items.map((item) => {
       const snippet = item.text_matches?.[0]?.fragment ?? "";
-      return { ...item, severity: severity(item.path, snippet), snippet, valuePreview: extractValuePreview(snippet, item.path) };
+      const sev = severity(item.path, snippet);
+      return { ...item, severity: sev, snippet, valuePreview: extractValuePreview(snippet, item.path), confidence: confidenceScore(item.path, snippet, sev) };
     });
 
     if (notify) {
@@ -1444,6 +1504,35 @@ router.get("/autoscan/status", (_req, res) => {
     },
     tokenPool: tokenPool.summary(),
   });
+});
+
+// ── GET /api/autoscan/events (SSE live refresh) ───────────────────────────────
+router.get("/autoscan/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+  res.write(`event: connected\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`);
+  sseClients.add(res);
+  const keepalive = setInterval(() => { try { res.write(": ping\n\n"); } catch { /* ignore */ } }, 25000);
+  req.on("close", () => { sseClients.delete(res); clearInterval(keepalive); });
+});
+
+// ── GET /api/autoscan/history ─────────────────────────────────────────────────
+router.get("/autoscan/history", (_req, res) => {
+  res.json({ history: scanHistory });
+});
+
+// ── POST /api/autoscan/test-snippet ──────────────────────────────────────────
+router.post("/autoscan/test-snippet", (req, res) => {
+  const { snippet = "", filePath = "test.env" } = req.body as { snippet?: string; filePath?: string };
+  if (!snippet) { res.status(400).json({ error: "snippet required" }); return; }
+  const sev = severity(filePath, snippet);
+  const vp = extractValuePreview(snippet, filePath);
+  const conf = confidenceScore(filePath, snippet, sev);
+  const placeholder = isPlaceholderValue(snippet);
+  const testFile = isExampleOrTestFile(filePath);
+  res.json({ severity: sev, valuePreview: vp, confidence: conf, isPlaceholder: placeholder, isTestFile: testFile });
 });
 
 // ── POST /api/autoscan/interval ───────────────────────────────────────────────

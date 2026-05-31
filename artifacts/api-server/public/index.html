@@ -395,6 +395,29 @@
     .explorer-links{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;}
     .explorer-link{font-size:10px;color:var(--primary);background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);border-radius:4px;padding:1px 7px;text-decoration:none;white-space:nowrap;}
     .explorer-link:hover{background:rgba(99,102,241,.22);}
+    /* ── Confidence score ── */
+    .conf-bar-wrap{display:inline-flex;align-items:center;gap:5px;margin-top:5px;}
+    .conf-label{font-size:9px;color:var(--muted);white-space:nowrap;}
+    .conf-track{width:50px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0;}
+    .conf-fill{height:100%;border-radius:2px;transition:width .4s;}
+    .conf-val{font-size:9px;font-weight:700;white-space:nowrap;}
+    .conf-high{background:#4ade80;color:#4ade80;}
+    .conf-mid {background:#facc15;color:#facc15;}
+    .conf-low {background:#f87171;color:#f87171;}
+    /* ── Trend chart ── */
+    .trend-card{background:var(--card);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:12px;}
+    .trend-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;}
+    .trend-canvas-wrap{position:relative;height:80px;}
+    .trend-empty{font-size:11px;color:var(--muted);text-align:center;padding:20px 0;}
+    /* ── Query tester ── */
+    .tester-card{background:var(--card);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:12px;}
+    .tester-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;}
+    .tester-result{margin-top:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:3px;font-size:11px;display:none;}
+    .tester-row{display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;}
+    /* ── Bulk action ── */
+    .as-bulk-bar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--primary);border-radius:8px;padding:8px 16px;font-size:12px;color:var(--text);z-index:9998;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4);white-space:nowrap;display:none;}
+    .as-bulk-bar.show{display:flex;}
+    .as-find-cb{accent-color:var(--primary);cursor:pointer;flex-shrink:0;width:13px;height:13px;margin-top:2px;}
     /* ── Leaderboard ── */
     .lb-wrap{display:flex;flex-direction:column;gap:3px;margin-top:8px;}
     .lb-row{display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:5px;font-size:11px;background:var(--input);}
@@ -624,6 +647,28 @@
       </div>
     </div>
 
+    <!-- Trend chart -->
+    <div class="trend-card" id="trend-card">
+      <div class="trend-title">
+        <span>📊 Tren Temuan per Scan</span>
+        <span style="font-size:10px;font-weight:normal" id="trend-legend"><span style="color:#f87171">■</span> CRITICAL &nbsp;<span style="color:#fb923c">■</span> HIGH</span>
+      </div>
+      <div class="trend-canvas-wrap"><canvas id="trend-canvas" style="width:100%;height:80px"></canvas><div class="trend-empty" id="trend-empty">Belum ada data — scan pertama akan muncul di sini</div></div>
+    </div>
+
+    <!-- Query tester -->
+    <div class="tester-card">
+      <div class="tester-title">🧪 Query Tester — Test Snippet Sebelum Scan</div>
+      <div class="tester-row">
+        <textarea id="tester-snippet" class="input" rows="3" placeholder="Paste snippet kode di sini, contoh:&#10;PRIVATE_KEY=0xabcdef1234..." style="font-size:11px;resize:vertical;flex:1"></textarea>
+      </div>
+      <div class="tester-row" style="margin-bottom:0">
+        <input id="tester-path" class="input" placeholder="Path file (opsional, cth: .env)" style="flex:1;font-size:11px">
+        <button class="btn btn-primary" style="font-size:11px;padding:5px 12px;flex-shrink:0" onclick="testSnippet()">▶ Test</button>
+      </div>
+      <div class="tester-result" id="tester-result"></div>
+    </div>
+
     <!-- Leaderboard -->
     <div class="as-queries-card" style="margin-top:12px">
       <div class="as-queries-title">🏆 Query Paling Produktif <span class="cnt-badge" id="lb-empty" style="display:none">belum ada data</span></div>
@@ -680,6 +725,12 @@
   <span id="batch-count">0 dipilih</span>
   <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="runBatch()">▶ Jalankan Semua</button>
   <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="clearBatch()">✕ Batal</button>
+</div>
+<!-- Auto-Scan Bulk Bar -->
+<div class="as-bulk-bar" id="as-bulk-bar">
+  <span id="as-bulk-cnt">0 dipilih</span>
+  <button class="btn btn-danger" style="font-size:11px;padding:4px 10px" onclick="bulkBlock()">🚫 Blokir Repo</button>
+  <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="bulkClearSel()">✕ Batal</button>
 </div>
 <div id="toast"></div>
 
@@ -1323,7 +1374,8 @@ function renderContent(data,error,loading) {
       const explorerHtml=sev==='CRITICAL'?detectExplorerLinks(item.path||'',fragment):'';
       const vp=item.valuePreview||'';
       const vpHtml=vp?`<div class="val-preview-wrap"><span class="val-preview" onclick="copyText(${JSON.stringify(vp)});event.stopPropagation()" title="Klik untuk salin"><span class="val-preview-label">🔑 Value:&nbsp;</span>${esc(vp)}<span class="val-preview-copy">⎘ salin</span></span></div>`:'';
-      html+=`<div class="result-card" data-url="${fileUrl}"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${fileUrl}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a>${batchLbl}</div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span>${freshBadge(pushedDate)}</div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="preview-btn" data-preview="${fileUrl}" data-label="${esc(item.path||'')}" title="Preview file">👁</button><button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan hasil ini">✕</button><button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button></div></div>${vpHtml}${highlightSnippet(fragment,matches)}${explorerHtml}</div>`;
+      const confHtml=confidenceBadge(item.confidence);
+      html+=`<div class="result-card" data-url="${fileUrl}"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${fileUrl}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a>${batchLbl}</div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span>${freshBadge(pushedDate)}</div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="preview-btn" data-preview="${fileUrl}" data-label="${esc(item.path||'')}" title="Preview file">👁</button><button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan hasil ini">✕</button><button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button></div></div>${vpHtml}${confHtml}${highlightSnippet(fragment,matches)}${explorerHtml}</div>`;
     });
     if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
   }
@@ -1408,11 +1460,13 @@ function renderAutoScan() {
     list.innerHTML=`<div class="card empty"><div class="empty-icon">🤖</div><div class="empty-title">Belum ada temuan dari auto-scan</div><div class="empty-sub">${as.enabled?'Temuan baru akan muncul di sini setelah scan berjalan.':'Aktifkan auto-scan untuk mulai monitoring.'}</div></div>`;
     return;
   }
-  list.innerHTML=findings.map(f=>{
+  list.innerHTML=findings.map((f,idx)=>{
     const d=new Date(f.ts).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
     const fUrl=esc(f.fileUrl);
     const vpHtml=f.valuePreview?`<div class="val-preview-wrap"><span class="val-preview" onclick="copyText(${JSON.stringify(f.valuePreview)});event.stopPropagation()" title="Klik untuk salin"><span class="val-preview-label">🔑 Value:&nbsp;</span>${esc(f.valuePreview)}<span class="val-preview-copy">⎘ salin</span></span></div>`:'';
-    return `<div class="as-find-card"><div class="as-find-top"><div class="as-find-links"><div><a href="#" class="as-find-repo">${esc(f.repo)}</a><span class="sep">/</span><a href="${fUrl}" target="_blank" rel="noopener" class="as-find-file">${esc(f.path)} ↗</a></div><div class="as-find-meta"><span class="as-find-meta-item">🕐 ${d}</span><span class="as-find-query">🏷 ${esc(f.queryLabel)}</span></div></div><div class="result-actions"><span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><button class="preview-btn" data-preview="${fUrl}" data-label="${esc(f.path)}" title="Preview file">👁</button><button class="block-btn" data-repo="${esc(f.repo)}" title="Blokir repo ini">🚫</button><button class="copy-btn" data-copy="${fUrl}" title="Salin URL">⎘</button></div></div>${vpHtml}</div>`;
+    const confHtml=confidenceBadge(f.confidence);
+    const checked=asSel.has(idx)?'checked':'';
+    return `<div class="as-find-card" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" class="as-find-cb" data-idx="${idx}" ${checked} onchange="toggleFindingSel(${idx})" title="Pilih untuk bulk action"><div style="flex:1;min-width:0"><div class="as-find-top"><div class="as-find-links"><div><a href="#" class="as-find-repo">${esc(f.repo)}</a><span class="sep">/</span><a href="${fUrl}" target="_blank" rel="noopener" class="as-find-file">${esc(f.path)} ↗</a></div><div class="as-find-meta"><span class="as-find-meta-item">🕐 ${d}</span><span class="as-find-query">🏷 ${esc(f.queryLabel)}</span></div></div><div class="result-actions"><span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><button class="preview-btn" data-preview="${fUrl}" data-label="${esc(f.path)}" title="Preview file">👁</button><button class="block-btn" data-repo="${esc(f.repo)}" title="Blokir repo ini">🚫</button><button class="copy-btn" data-copy="${fUrl}" title="Salin URL">⎘</button></div></div>${vpHtml}${confHtml}</div></div>`;
   }).join('');
   list.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>copyText(b.dataset.copy)));
   list.querySelectorAll('[data-preview]').forEach(b=>b.addEventListener('click',()=>previewFile(b.dataset.preview,b.dataset.label)));
@@ -1793,6 +1847,181 @@ async function removeCustomQuery(idx) {
   } catch{ toast('Gagal menghubungi server.'); }
 }
 
+/* ── Confidence Badge ───────────────────────────────────────────────────────── */
+function confidenceBadge(conf) {
+  if(typeof conf!=='number') return '';
+  const pct=Math.round(conf*100);
+  const cls=pct>=70?'conf-high':pct>=40?'conf-mid':'conf-low';
+  return `<div class="conf-bar-wrap" title="Confidence: ${pct}%">
+    <span class="conf-label">CONF</span>
+    <div class="conf-track"><div class="conf-fill ${cls}" style="width:${pct}%"></div></div>
+    <span class="conf-val ${cls}">${pct}%</span>
+  </div>`;
+}
+
+/* ── Trend Chart (Canvas 2D) ─────────────────────────────────────────────── */
+let trendData = [];
+function fetchAndRenderTrend() {
+  fetch('/api/autoscan/history').then(r=>r.ok?r.json():null).then(d=>{
+    if(!d) return;
+    trendData = d.history || [];
+    renderTrendChart();
+  }).catch(()=>{});
+}
+function renderTrendChart() {
+  const canvas = document.getElementById('trend-canvas');
+  const empty  = document.getElementById('trend-empty');
+  if(!canvas) return;
+  if(!trendData.length){ empty.style.display='block'; canvas.style.display='none'; return; }
+  empty.style.display='none'; canvas.style.display='block';
+  const dpr = window.devicePixelRatio||1;
+  const W=canvas.clientWidth||canvas.offsetWidth||240, H=80;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,W,H);
+  const data=trendData.slice(-20);
+  const maxTotal=Math.max(1,...data.map(d=>d.total||0));
+  const n=data.length;
+  const pad={l:6,r:6,t:8,b:18};
+  const cw=W-pad.l-pad.r, ch=H-pad.t-pad.b;
+  const bw=Math.max(4,Math.floor(cw/n)-2);
+  const gap=(cw-bw*n)/(n+1);
+  // Grid line
+  ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad.l,pad.t+ch); ctx.lineTo(pad.l+cw,pad.t+ch); ctx.stroke();
+  data.forEach((d,i)=>{
+    const x=pad.l+gap+(bw+gap)*i;
+    // HIGH bar
+    const hH=Math.round((d.high||0)/maxTotal*ch);
+    if(hH>0){ ctx.fillStyle='#fb923c'; ctx.fillRect(x,pad.t+ch-hH,bw,hH); }
+    // CRITICAL overlay
+    const cH=Math.round((d.critical||0)/maxTotal*ch);
+    if(cH>0){ ctx.fillStyle='#f87171'; ctx.fillRect(x,pad.t+ch-cH,bw,cH); }
+    // X label (time)
+    if(n<=10||i%(Math.ceil(n/8))===0){
+      ctx.fillStyle='rgba(255,255,255,.3)'; ctx.font=`${Math.floor(dpr>1?8.5:8.5)}px monospace`;
+      ctx.fillText(new Date(d.ts).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),x,H-3);
+    }
+  });
+}
+
+/* ── SSE Live Refresh ────────────────────────────────────────────────────── */
+let sseSource = null;
+let sseRetryTimeout = null;
+let notifPermission = false;
+function initSSE() {
+  if(sseSource) { sseSource.close(); }
+  sseSource = new EventSource('/api/autoscan/events');
+  sseSource.addEventListener('findings', e => {
+    try {
+      const d = JSON.parse(e.data);
+      // Refresh status & render
+      fetchAutoScanStatus().then(()=>{ if(S.view==='autoscan') renderAutoScan(); });
+      fetchAndRenderTrend();
+      // Browser notification
+      if(d.critical>0) sendBrowserNotif(`🚨 ${d.critical} temuan CRITICAL baru!`, `Auto-scan menemukan ${d.count} temuan. Cek tab Auto-Scan.`);
+      // Sound
+      playBeep();
+      toast(`🔔 ${d.count} temuan baru — ${d.critical} CRITICAL, ${d.high} HIGH`);
+    } catch{}
+  });
+  sseSource.addEventListener('scan-complete', e => {
+    fetchAutoScanStatus().then(()=>{ if(S.view==='autoscan') renderAutoScan(); });
+    fetchAndRenderTrend();
+  });
+  sseSource.onerror = () => {
+    sseSource.close(); sseSource=null;
+    if(sseRetryTimeout) clearTimeout(sseRetryTimeout);
+    sseRetryTimeout = setTimeout(initSSE, 8000);
+  };
+}
+
+/* ── Browser Notification ────────────────────────────────────────────────── */
+function requestNotifPermission() {
+  if(!('Notification' in window)) return;
+  Notification.requestPermission().then(p=>{ notifPermission=(p==='granted'); });
+}
+function sendBrowserNotif(title, body) {
+  if(!notifPermission || !('Notification' in window)) return;
+  try{ new Notification(title,{body,icon:'/favicon.ico'}); }catch{}
+}
+
+/* ── Alert Beep (via AudioContext) ──────────────────────────────────────── */
+function playBeep() {
+  try {
+    const ac=new (window.AudioContext||window.webkitAudioContext)();
+    const osc=ac.createOscillator(); const gain=ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.frequency.value=880; osc.type='square';
+    gain.gain.setValueAtTime(0.12,ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.25);
+    osc.start(); osc.stop(ac.currentTime+0.25);
+  } catch{}
+}
+
+/* ── Query Tester ────────────────────────────────────────────────────────── */
+async function testSnippet() {
+  const snippet=(document.getElementById('tester-snippet').value||'').trim();
+  const filePath=(document.getElementById('tester-path').value||'test.env').trim();
+  if(!snippet){ toast('Isi snippet terlebih dahulu.'); return; }
+  const res=document.getElementById('tester-result');
+  res.style.display='block'; res.innerHTML='<span style="color:var(--muted)">⏳ Menguji…</span>';
+  try{
+    const r=await fetch('/api/autoscan/test-snippet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snippet,filePath})});
+    const d=await r.json();
+    if(!r.ok){ res.innerHTML=`<span style="color:var(--red)">Error: ${esc(d.error||'Gagal')}</span>`; return; }
+    const conf=typeof d.confidence==='number'?Math.round(d.confidence*100):null;
+    const sevColors={'CRITICAL':'var(--red)','HIGH':'var(--orange)','MEDIUM':'var(--yellow)','LOW':'var(--muted)','INFO':'var(--muted)'};
+    const sevCol=sevColors[d.severity]||'var(--muted)';
+    res.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start">
+      <div><div style="font-size:9px;color:var(--muted)">SEVERITY</div><span class="sev-badge sev-${d.severity}">${d.severity}</span></div>
+      ${conf!==null?`<div><div style="font-size:9px;color:var(--muted)">CONFIDENCE</div><b style="color:${conf>=70?'#4ade80':conf>=40?'#facc15':'#f87171'}">${conf}%</b></div>`:''}
+      ${d.valuePreview?`<div style="min-width:0;flex:1"><div style="font-size:9px;color:var(--muted)">VALUE PREVIEW</div><code style="font-size:10px;color:var(--primary);word-break:break-all">${esc(d.valuePreview)}</code></div>`:''}
+      <div><div style="font-size:9px;color:var(--muted)">PLACEHOLDER?</div><span style="color:${d.isPlaceholder?'#f87171':'#4ade80'}">${d.isPlaceholder?'Ya':'Tidak'}</span></div>
+      <div><div style="font-size:9px;color:var(--muted)">TEST FILE?</div><span style="color:${d.isTestFile?'#f87171':'#4ade80'}">${d.isTestFile?'Ya':'Tidak'}</span></div>
+    </div>`;
+  } catch(e){ res.innerHTML=`<span style="color:var(--red)">Error: ${esc(e.message)}</span>`; }
+}
+
+/* ── Bulk Actions (Auto-Scan Findings) ──────────────────────────────────── */
+const asSel = new Set(); // selected finding indices
+function updateBulkBar() {
+  const bar=document.getElementById('as-bulk-bar');
+  const cnt=document.getElementById('as-bulk-cnt');
+  if(!bar||!cnt) return;
+  if(asSel.size>0){ bar.classList.add('show'); cnt.textContent=`${asSel.size} dipilih`; }
+  else bar.classList.remove('show');
+}
+function toggleFindingSel(idx) {
+  if(asSel.has(idx)) asSel.delete(idx); else asSel.add(idx);
+  // Update checkbox visual
+  const cb=document.querySelector(`.as-find-cb[data-idx="${idx}"]`);
+  if(cb) cb.checked=asSel.has(idx);
+  updateBulkBar();
+}
+function bulkClearSel() {
+  asSel.clear();
+  document.querySelectorAll('.as-find-cb').forEach(cb=>cb.checked=false);
+  updateBulkBar();
+}
+async function bulkBlock() {
+  const findings = S.autoScan?.recentFindings || [];
+  const repos = [...new Set([...asSel].map(i=>findings[i]?.repo).filter(Boolean))];
+  if(!repos.length){ toast('Tidak ada repo valid dipilih.'); return; }
+  let ok=0;
+  for(const repo of repos){
+    try{
+      const r=await fetch('/api/autoscan/blocklist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({repo})});
+      if(r.ok) ok++;
+    }catch{}
+  }
+  toast(`${ok} repo diblokir ✓`);
+  bulkClearSel();
+  await fetchAutoScanStatus();
+  if(S.view==='autoscan') renderAutoScan();
+}
+
 /* ── Leaderboard ────────────────────────────────────────────────────────────── */
 function renderLeaderboard(queryHits) {
   const lb=document.getElementById('as-leaderboard');
@@ -1833,11 +2062,22 @@ async function toggleStrictMode(){
   fetchRateLimit();
   fetchAutoScanStatus();
   fetchBlocklist();
+  fetchAndRenderTrend();
+
+  // SSE live refresh
+  initSSE();
+
+  // Request browser notification permission
+  requestNotifPermission();
 
   // Refresh config every 30s, rate limit every 5m, auto-scan every 15s
   setInterval(fetchConfig, 30000);
   setInterval(fetchRateLimit, 5*60*1000);
   setInterval(()=>{ fetchAutoScanStatus(); updateAutoScanSidebar(); }, 15000);
+  // Trend chart refresh every 5 min (SSE handles real-time)
+  setInterval(fetchAndRenderTrend, 5*60*1000);
+  // Re-render chart on window resize
+  window.addEventListener('resize', ()=>{ if(trendData.length) renderTrendChart(); });
 
   // Countdown ticker every second
   setInterval(()=>{ if(S.autoScan) { updateAutoScanSidebar(); if(S.view==='autoscan') { const sub=document.getElementById('as-ctrl-sub'); if(sub&&S.autoScan.enabled&&S.autoScan.nextScan&&!S.autoScan.running){ const diff=Math.max(0,S.autoScan.nextScan-Date.now()); const mins=Math.floor(diff/60000); const secs=Math.floor((diff%60000)/1000); sub.innerHTML=`Next scan: <b>${mins}m ${secs}s</b>`+(S.autoScan.lastScan?` &nbsp;·&nbsp; Terakhir: ${new Date(S.autoScan.lastScan).toLocaleTimeString('id-ID')}`:''); } } } }, 1000);

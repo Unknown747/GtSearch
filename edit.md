@@ -1,5 +1,55 @@
 # Edit History — GH Dork
 
+## 2026-05-31 — Session 6: 6 Fitur Baru (#26–#31)
+
+### #26 Confidence Score
+- Fungsi `confidenceScore(filePath, snippet, sev)` di backend → skor 0.0–1.0
+- Faktor: severity (CRITICAL=+0.5, HIGH=+0.3, MEDIUM=+0.15), regex match (+0.3), is-placeholder (-0.4), is-test-file (-0.3), real extension bonus (+0.1)
+- Field `confidence: number` ditambah ke `AutoScanFinding` interface dan diisi di `processPage()` serta enrichment manual search
+- UI: badge mini `CONF XX%` dengan bar warna (hijau ≥70%, kuning ≥40%, merah <40%) di setiap finding card — auto-scan dan manual search
+- CSS: `.conf-bar-wrap`, `.conf-track`, `.conf-fill`, `.conf-val`, `.conf-high/mid/low`
+- File: `github.ts` (fungsi, interface, processPage, enriched), `index.html` (CSS, `confidenceBadge()`, kedua render card)
+
+### #27 Trend Chart
+- Canvas 2D bar chart "📊 Tren Temuan per Scan" di sidebar Auto-Scan
+- Bar merah = CRITICAL, bar orange = HIGH, ditumpuk per scan
+- Axis X: timestamp scan (format jam:menit), max 20 scan terakhir, responsive (resize listener)
+- Endpoint baru: `GET /api/autoscan/history` → `{ history: ScanHistoryEntry[] }` (max 50 entry)
+- `scanHistory[]` diisi di akhir setiap `runAutoScan()`: `{ ts, critical, high, total }`
+- Frontend: `fetchAndRenderTrend()` dipanggil saat init + setiap 5 menit + setiap SSE scan-complete
+- File: `github.ts` (interface `ScanHistoryEntry`, array `scanHistory`, push di akhir scan, endpoint), `index.html` (CSS `.trend-*`, HTML canvas+empty, JS `renderTrendChart()`/`fetchAndRenderTrend()`)
+
+### #28 SSE Live Refresh
+- Endpoint baru: `GET /api/autoscan/events` — Server-Sent Events
+- Backend: `sseClients` Set, `notifySseClients(event, data)`, keepalive ping setiap 25s, cleanup saat disconnect
+- Events: `findings` (dikirim jika ada finding baru setelah scan) + `scan-complete` (setiap akhir scan)
+- Frontend: `initSSE()` — EventSource yang reconnect otomatis setelah 8s jika disconnect
+- Saat event `findings` masuk: `fetchAutoScanStatus()` + `renderAutoScan()` + `fetchAndRenderTrend()` + toast notifikasi
+- File: `github.ts` (Set, fungsi, endpoint, panggil di akhir scan), `index.html` (`initSSE()`, dipanggil di `init()`)
+
+### #29 Browser Notification + Beep
+- Saat SSE `findings` diterima dan ada CRITICAL baru: `Notification` API browser muncul + beep AudioContext
+- `requestNotifPermission()` dipanggil saat init → browser minta izin notifikasi
+- `sendBrowserNotif(title, body)` — hanya jika permission granted
+- `playBeep()` — AudioContext oscillator 880Hz, 0.25s, gain 0.12 → tidak annoying
+- File: `index.html` (fungsi `requestNotifPermission`, `sendBrowserNotif`, `playBeep`, dipanggil dari `initSSE` saat event findings)
+
+### #30 Bulk Actions (Auto-Scan Findings)
+- Setiap finding card auto-scan kini memiliki checkbox kiri untuk bulk selection
+- State: `Set<number> asSel` — track index finding yang dipilih
+- Floating bulk bar (`#as-bulk-bar`) muncul di bottom-center saat ada pilihan: "N dipilih", tombol 🚫 Blokir Repo, ✕ Batal
+- `bulkBlock()` — blokir semua repo unik dari pilihan via `POST /api/autoscan/blocklist` sekuensial
+- `bulkClearSel()` — hapus semua pilihan + sembunyikan bar
+- CSS: `.as-bulk-bar`, `.as-bulk-bar.show`, `.as-find-cb`
+- File: `index.html` (CSS, HTML `#as-bulk-bar`, JS `asSel`, `toggleFindingSel`, `updateBulkBar`, `bulkBlock`, `bulkClearSel`, update render finding)
+
+### #31 Query Tester
+- Card "🧪 Query Tester" di sidebar Auto-Scan: textarea snippet + input path file + tombol ▶ Test
+- Endpoint baru: `POST /api/autoscan/test-snippet` — body `{ snippet, filePath }` → JSON `{ severity, valuePreview, confidence, isPlaceholder, isTestFile }`
+- Hasil ditampilkan inline: badge severity, confidence %, value preview, flag placeholder/test
+- CSS: `.tester-card`, `.tester-title`, `.tester-result`, `.tester-row`
+- File: `github.ts` (endpoint baru, panggil `severity`, `extractValuePreview`, `confidenceScore`, `isPlaceholderValue`, `isExampleOrTestFile`), `index.html` (CSS, HTML card, JS `testSnippet()`)
+
 ## 2026-05-31 — Session 5: 1 Perubahan (#24)
 
 ### #25 Value Preview — Copy on Click
