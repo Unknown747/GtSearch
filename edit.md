@@ -2,6 +2,13 @@
 
 ## 2026-05-31 — Session 5: 1 Perubahan (#24)
 
+### #25 Value Preview — Copy on Click
+- Badge `🔑 Value:` sekarang bisa diklik untuk menyalin teks preview ke clipboard
+- Hover: badge menjadi lebih terang dan muncul teks `⎘ salin` di ujung kanan (fade-in CSS)
+- Onclick memanggil `copyText(valuePreview)` + `event.stopPropagation()` agar tidak trigger aksi lain
+- Berlaku di kedua card: auto-scan findings dan manual search results
+- File: `artifacts/api-server/public/index.html` (CSS `.val-preview:hover`, `.val-preview-copy`, onclick di kedua card)
+
 ### #24 Value Preview — Potongan Nilai Terdeteksi (Disensor)
 - Fungsi baru `extractValuePreview(snippet, filePath)` di backend: ekstrak nilai asli dari snippet dan sensor tengahnya
   - Format regex-confirmed keys: `ETH Key: 0xABCD...ef12`, `AWS Key: AKIA1234...WXYZ`, `GH Token: ghp_ABCD...ef12`, `BTC WIF: 5ABC...ef12`, `NEAR Key: ed25519:ABCD...ef12`, `xprv/zprv`, `Solana Key`, `Hex Key`

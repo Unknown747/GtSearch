@@ -207,8 +207,11 @@
 
     .snippet { background: var(--bg); border: 1px solid rgba(255,255,255,0.06); border-radius: 3px; padding: 6px 8px; font-size: 11px; color: var(--muted); margin-top: 8px; overflow: auto; white-space: pre-wrap; word-break: break-all; max-height: 120px; line-height: 1.6; }
     .snippet mark.hit { background:rgba(250,204,21,0.22); color:var(--yellow); border-radius:2px; padding:0 2px; font-style:normal; }
-    .val-preview { display:inline-flex; align-items:center; gap:5px; margin-top:6px; padding:3px 8px; background:rgba(250,204,21,0.07); border:1px solid rgba(250,204,21,0.2); border-radius:3px; font-size:10px; font-family:monospace; color:var(--yellow); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .val-preview { display:inline-flex; align-items:center; gap:5px; margin-top:6px; padding:3px 8px; background:rgba(250,204,21,0.07); border:1px solid rgba(250,204,21,0.2); border-radius:3px; font-size:10px; font-family:monospace; color:var(--yellow); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; user-select:none; transition:background 0.15s,border-color 0.15s; }
+    .val-preview:hover { background:rgba(250,204,21,0.14); border-color:rgba(250,204,21,0.4); }
     .val-preview-label { color:var(--muted); font-family:inherit; flex-shrink:0; }
+    .val-preview-copy { font-size:9px; color:var(--muted); flex-shrink:0; opacity:0; transition:opacity 0.15s; }
+    .val-preview:hover .val-preview-copy { opacity:1; }
     .val-preview-wrap { margin-top:4px; }
 
     /* Filter row */
@@ -1319,7 +1322,7 @@ function renderContent(data,error,loading) {
       const fileUrl=esc(item.html_url||'');
       const explorerHtml=sev==='CRITICAL'?detectExplorerLinks(item.path||'',fragment):'';
       const vp=item.valuePreview||'';
-      const vpHtml=vp?`<div class="val-preview-wrap"><span class="val-preview"><span class="val-preview-label">🔑 Value:&nbsp;</span>${esc(vp)}</span></div>`:'';
+      const vpHtml=vp?`<div class="val-preview-wrap"><span class="val-preview" onclick="copyText(${JSON.stringify(vp)});event.stopPropagation()" title="Klik untuk salin"><span class="val-preview-label">🔑 Value:&nbsp;</span>${esc(vp)}<span class="val-preview-copy">⎘ salin</span></span></div>`:'';
       html+=`<div class="result-card" data-url="${fileUrl}"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${fileUrl}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a>${batchLbl}</div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span>${freshBadge(pushedDate)}</div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="preview-btn" data-preview="${fileUrl}" data-label="${esc(item.path||'')}" title="Preview file">👁</button><button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan hasil ini">✕</button><button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button></div></div>${vpHtml}${highlightSnippet(fragment,matches)}${explorerHtml}</div>`;
     });
     if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
@@ -1408,7 +1411,7 @@ function renderAutoScan() {
   list.innerHTML=findings.map(f=>{
     const d=new Date(f.ts).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
     const fUrl=esc(f.fileUrl);
-    const vpHtml=f.valuePreview?`<div class="val-preview-wrap"><span class="val-preview"><span class="val-preview-label">🔑 Value:&nbsp;</span>${esc(f.valuePreview)}</span></div>`:'';
+    const vpHtml=f.valuePreview?`<div class="val-preview-wrap"><span class="val-preview" onclick="copyText(${JSON.stringify(f.valuePreview)});event.stopPropagation()" title="Klik untuk salin"><span class="val-preview-label">🔑 Value:&nbsp;</span>${esc(f.valuePreview)}<span class="val-preview-copy">⎘ salin</span></span></div>`:'';
     return `<div class="as-find-card"><div class="as-find-top"><div class="as-find-links"><div><a href="#" class="as-find-repo">${esc(f.repo)}</a><span class="sep">/</span><a href="${fUrl}" target="_blank" rel="noopener" class="as-find-file">${esc(f.path)} ↗</a></div><div class="as-find-meta"><span class="as-find-meta-item">🕐 ${d}</span><span class="as-find-query">🏷 ${esc(f.queryLabel)}</span></div></div><div class="result-actions"><span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><button class="preview-btn" data-preview="${fUrl}" data-label="${esc(f.path)}" title="Preview file">👁</button><button class="block-btn" data-repo="${esc(f.repo)}" title="Blokir repo ini">🚫</button><button class="copy-btn" data-copy="${fUrl}" title="Salin URL">⎘</button></div></div>${vpHtml}</div>`;
   }).join('');
   list.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>copyText(b.dataset.copy)));
