@@ -66,7 +66,7 @@ artifacts/api-server/
 
 ## User preferences
 
-_Populate as you build._
+- **Setiap modifikasi, edit, atau penambahan fitur wajib dicatat di `edit.md`** dengan format sesi + nomor urut, deskripsi singkat, dan detail perubahan (file yang diubah, endpoint baru, UI baru, dll).
 
 ## Gotchas
 
