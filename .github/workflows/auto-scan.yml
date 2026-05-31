@@ -1,0 +1,93 @@
+name: GH Dork Auto-Scan
+
+on:
+  schedule:
+    # Every 6 hours
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Scan mode (normal | strict)"
+        required: false
+        default: "normal"
+
+jobs:
+  crypto-scan:
+    name: Crypto Credential Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      NODE_ENV: production
+      PORT: "8080"
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TOKEN_1: ${{ secrets.TOKEN_1 }}
+      TOKEN_2: ${{ secrets.TOKEN_2 }}
+      TOKEN_3: ${{ secrets.TOKEN_3 }}
+      TOKEN_4: ${{ secrets.TOKEN_4 }}
+      TOKEN_5: ${{ secrets.TOKEN_5 }}
+      TOKEN_6: ${{ secrets.TOKEN_6 }}
+      TOKEN_7: ${{ secrets.TOKEN_7 }}
+      TOKEN_8: ${{ secrets.TOKEN_8 }}
+      TOKEN_9: ${{ secrets.TOKEN_9 }}
+      TOKEN_10: ${{ secrets.TOKEN_10 }}
+      TOKEN_11: ${{ secrets.TOKEN_11 }}
+      TOKEN_12: ${{ secrets.TOKEN_12 }}
+      TOKEN_13: ${{ secrets.TOKEN_13 }}
+      TOKEN_14: ${{ secrets.TOKEN_14 }}
+      TOKEN_15: ${{ secrets.TOKEN_15 }}
+      TOKEN_16: ${{ secrets.TOKEN_16 }}
+      TOKEN_17: ${{ secrets.TOKEN_17 }}
+      TOKEN_18: ${{ secrets.TOKEN_18 }}
+      TOKEN_19: ${{ secrets.TOKEN_19 }}
+      TOKEN_20: ${{ secrets.TOKEN_20 }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build api-server
+        run: pnpm --filter @workspace/api-server run build
+
+      - name: Run crypto scan
+        run: pnpm run crypto-scan
+        timeout-minutes: 50
+
+      - name: Upload findings artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gh-dork-findings-${{ github.run_number }}
+          path: artifacts/api-server/data/findings.json
+          retention-days: 30
+          if-no-files-found: ignore

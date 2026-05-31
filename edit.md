@@ -1,5 +1,73 @@
 # Edit History — GH Dork
 
+## 2026-05-31 — Session 8: Enhancement Batch (#33–#40)
+
+### #33 crypto-dorks.json — 68 Query Dork Kripto
+- File baru: `artifacts/api-server/data/crypto-dorks.json`
+- 68 query terstruktur: ETH/BTC/Solana/TRON private keys, seed phrases, exchange APIs (Binance/Coinbase/Kraken/KuCoin/Bybit/OKX/Huobi/Gate/Bitget/MEXC), wallet files, hardhat/truffle/foundry, RPC (Infura/Alchemy/QuickNode/Moralis/Helius/Ankr), Jupyter notebooks, CI/CD workflows, Terraform, docker-compose
+
+### #34 ai-validator.ts — Validasi AI via Gemini 2.0 Flash
+- File baru: `artifacts/api-server/src/utils/ai-validator.ts`
+- `validateWithAI(snippet, credType)` → Google Gemini 2.0 Flash API
+- `batchValidateWithAI(items, concurrency=3)` → batch dengan concurrency limit
+- Local pre-check dummy keywords sebelum API call
+- Retry 3× dengan exponential back-off (1.5s, 3s)
+- Graceful fallback (no-op) bila `GEMINI_API_KEY` tidak ada
+- Env baru: `GEMINI_API_KEY`
+
+### #35 GitHub Actions Workflow — Auto-Scan Cron
+- File baru: `.github/workflows/auto-scan.yml`
+- Cron setiap 6 jam + manual `workflow_dispatch`
+- Setup pnpm, cache store, Node 20, build, lalu run `crypto-scan`
+- Secrets: TOKEN_1–TOKEN_20, GEMINI_API_KEY, TELEGRAM/DISCORD/SLACK
+- Uploads `findings.json` sebagai artifact (retensi 30 hari)
+
+### #36 retryFetch() — Utility Fetch dengan Retry
+- Ditambahkan di `artifacts/api-server/src/routes/github.ts` (setelah rate limiter cleanup)
+- Max 3 attempts, exponential back-off 1.5s/3s
+- Tidak retry 4xx kecuali 429 (rate limit)
+- Timeout 30s via `AbortSignal.timeout`
+
+### #37 Utility Functions — filterRecentRepos / isValidPrivateKey / isValidSeedPhrase / deduplicateResults
+- `filterRecentRepos<T>()` — filter items hanya dari repo yg pushed ≤ maxAgeDays hari lalu (default 30)
+- `isValidPrivateKey()` — validasi format + filter 14 pola dummy (ETH hex, BTC WIF, Solana base58, NEAR ed25519, BIP32 xprv)
+- `isValidSeedPhrase()` — validasi 12/24 kata BIP39, filter dummy words
+- `deduplicateResults<T>()` — dedup berdasarkan repo.full_name + path
+- File: `artifacts/api-server/src/routes/github.ts`
+
+### #38 scanProgress — Real-time Scan Progress Tracking
+- `const scanProgress = { total, completed, percent }` ditambah setelah `autoScanState`
+- Inisialisasi di awal `runAutoScan()` setelah `activeQueries` selesai dibangun
+- Update setiap query selesai di `runWorker()`: `queriesCompleted + queriesSkipped / total`
+- SSE event `scan-progress` dikirim ke semua client setiap update
+- Diekspos via `/api/latest-results` → `stats.scanProgress`
+- File: `artifacts/api-server/src/routes/github.ts`
+
+### #39 Dashboard Tab — Chart.js + Tabel Temuan
+- Tab baru "📊 Dashboard" di nav bar (`index.html`)
+- Chart.js 4.4.7 dari CDN (jsdelivr) + CSS dashboard (stat cards, progress bar, chart/table styles)
+- 4 stat cards: Total Temuan, CRITICAL, HIGH, Total Scan
+- Progress bar real-time saat scan berjalan (dari `scanProgress`)
+- Bar chart "Temuan per Kategori" (Chart.js, max 12 kategori)
+- Bar chart "Distribusi Severity" (4 level)
+- Tabel 50 temuan terbaru dengan link file, severity badge, confidence bar
+- Tombol export CSV & JSON (reuse `exportFindings()`)
+- Auto-refresh setiap 30s saat tab Dashboard aktif
+- File: `artifacts/api-server/public/index.html`
+
+### #40 /api/latest-results — Endpoint Baru
+- `GET /api/github/latest-results` → JSON temuan + statistik agregat
+- Response: `{ findings[], stats: { total, bySeverity, byCategory, byType, lastScan, scanCount, scanProgress } }`
+- Fungsi helper `deriveCategory(queryLabel)` → 15 kategori dari label query
+- File: `artifacts/api-server/src/routes/github.ts`
+
+### #40b crypto-scan.mjs + package.json scripts
+- File baru: `artifacts/api-server/crypto-scan.mjs` — CLI runner: start server, trigger scan, wait SSE scan-complete, print summary, exit
+- `artifacts/api-server/package.json` → scripts `"crypto-scan"` + dependency `@google/generative-ai ^0.24.0`
+- `package.json` root → scripts `"crypto-scan": "pnpm --filter @workspace/api-server run crypto-scan"`
+
+---
+
 ## 2026-05-31 — Session 7: Bug Fix Audit (#32)
 
 ### #32 Bug Fix — Audit 6 Fitur Baru

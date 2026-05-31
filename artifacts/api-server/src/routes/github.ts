@@ -208,6 +208,31 @@ setInterval(() => {
   for (const [ip, e] of _rlMap) if (now - e.ts > RL_WINDOW_MS * 2) _rlMap.delete(ip);
 }, 5 * 60_000).unref?.();
 
+// ── Retry fetch helper ───────────────────────────────────────────────────────
+/**
+ * Wraps fetch with automatic retry (max 3 attempts, exponential back-off).
+ * Does NOT retry 4xx errors (except 429 rate-limit).
+ */
+async function retryFetch(url: string, options: RequestInit, maxAttempts = 3): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch(url, { ...options, signal: AbortSignal.timeout(30_000) });
+      // Retry only on 429 or 5xx
+      if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 429)) return res;
+      throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxAttempts) {
+        const delayMs = attempt * 1500;
+        logger.warn({ err, attempt, url: url.split("?")[0] }, `retryFetch: attempt ${attempt} failed, retrying in ${delayMs}ms`);
+        await new Promise<void>((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 // ── Discord & Slack webhook senders ──────────────────────────────────────────
 async function sendDiscord(content: string): Promise<void> {
   const url = process.env["DISCORD_WEBHOOK_URL"];
@@ -377,6 +402,89 @@ function isExampleOrTestFile(filePath: string): boolean {
     lo.includes("/example") || lo.includes("/examples/") ||
     lo.includes("/docs/") || lo.includes("/doc/")
   );
+}
+
+// ── Utility: filter recent repos, validate keys, deduplicate ─────────────────
+
+/** Keep only items whose repo was pushed/updated within maxAgeDays. */
+function filterRecentRepos<T extends { repository: { pushed_at?: string; updated_at?: string } }>(
+  items: T[],
+  maxAgeDays = 30,
+): T[] {
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+  return items.filter((item) => {
+    const dateStr = item.repository.pushed_at ?? item.repository.updated_at ?? "";
+    return dateStr ? new Date(dateStr).getTime() >= cutoff : true;
+  });
+}
+
+const DUMMY_KEY_PATTERNS: RegExp[] = [
+  /^0{32,}$/,
+  /^f{32,}$/i,
+  /^x{8,}$/i,
+  /\*{8,}/,
+  /your[_-]?(private[_-]?)?key/i,
+  /replace[_-]?me/i,
+  /change[_-]?me/i,
+  /enter[_-]?your/i,
+  /add[_-]?your/i,
+  /insert[_-]?your/i,
+  /example[_-]?key/i,
+  /test[_-]?key/i,
+  /dummy[_-]?key/i,
+  /fake[_-]?key/i,
+];
+
+/**
+ * Returns true when a string looks like a real private key (not a placeholder).
+ * Validates known key formats and filters dummy/placeholder patterns.
+ */
+function isValidPrivateKey(value: string): boolean {
+  if (!value || value.length < 32) return false;
+  const trimmed = value.trim();
+  if (DUMMY_KEY_PATTERNS.some((re) => re.test(trimmed))) return false;
+  if (/^0x[0-9a-fA-F]{64}$/.test(trimmed)) return true;      // ETH 0x-prefixed
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) return true;         // Raw 32-byte hex
+  if (/^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(trimmed)) return true; // BTC WIF
+  if (/^[1-9A-HJ-NP-Za-km-z]{87,88}$/.test(trimmed)) return true;      // Solana
+  if (/^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(trimmed)) return true; // NEAR
+  if (/^[xz]prv[A-Za-z0-9]{107}$/.test(trimmed)) return true; // BIP32/84
+  return false;
+}
+
+const DUMMY_SEED_WORDS = new Set([
+  "test", "example", "word", "replace", "your", "here", "fill",
+  "enter", "sample", "dummy", "fake", "insert", "placeholder",
+]);
+
+/**
+ * Returns true when the string appears to be a real 12 or 24-word BIP39 seed phrase.
+ * All words must be lowercase 3–8 character alphabetic strings with no dummy words.
+ */
+function isValidSeedPhrase(value: string): boolean {
+  if (!value) return false;
+  const words = value.trim().split(/\s+/);
+  if (words.length !== 12 && words.length !== 24) return false;
+  if (words.some((w) => DUMMY_SEED_WORDS.has(w.toLowerCase()))) return false;
+  return words.every((w) => /^[a-z]{3,8}$/.test(w));
+}
+
+/**
+ * Remove duplicate results based on repository full_name + file path.
+ * Keeps the first occurrence of each unique repo+path pair.
+ */
+function deduplicateResults<T extends { path?: string; repository?: { full_name?: string; html_url?: string } }>(
+  items: T[],
+): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const repo = item.repository?.full_name ?? item.repository?.html_url ?? "";
+    const filePath = item.path ?? "";
+    const key = `${repo}::${filePath}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function severity(filePath: string, snippet: string): "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" {
@@ -791,6 +899,9 @@ const autoScanState = {
   queriesSkipped: 0,
 };
 
+// Real-time scan progress (for progress bar in Dashboard)
+const scanProgress = { total: 0, completed: 0, percent: 0 };
+
 // Tracks finding keys (url|contenthash) — cleared every 7 days so updated files
 // with new credentials are re-detected even if the URL was seen before.
 const seenFindings = new Set<string>();
@@ -997,6 +1108,12 @@ async function runAutoScan(): Promise<void> {
     "Auto-scan started"
   );
 
+  // Initialize real-time progress tracking
+  scanProgress.total = activeQueries.length;
+  scanProgress.completed = 0;
+  scanProgress.percent = 0;
+  notifySseClients("scan-progress", { completed: 0, total: scanProgress.total, percent: 0, running: true });
+
   const newFindings: AutoScanFinding[] = [];
   const queryHitsThisScan: Record<string, number> = {};
 
@@ -1111,6 +1228,11 @@ async function runAutoScan(): Promise<void> {
 
         const data = (await r.json()) as { items: GHItem[] };
         autoScanState.queriesCompleted++;
+        scanProgress.completed = autoScanState.queriesCompleted + autoScanState.queriesSkipped;
+        if (scanProgress.total > 0) {
+          scanProgress.percent = Math.min(100, Math.round((scanProgress.completed / scanProgress.total) * 100));
+          notifySseClients("scan-progress", { completed: scanProgress.completed, total: scanProgress.total, percent: scanProgress.percent, running: true });
+        }
         logger.info({ label, results: data.items?.length ?? 0, remaining: state.remaining, windowDays, token: `...${token.slice(-4)}` }, "Auto-scan query done");
 
         processPage(data.items ?? [], label, q);
@@ -1688,6 +1810,62 @@ router.post("/autoscan/run-now", (req, res) => {
   }
   res.json({ ok: true, message: "Auto-scan dimulai sekarang." });
   void runAutoScan();
+});
+
+// ── Helper: derive category from query label ──────────────────────────────────
+function deriveCategory(queryLabel: string): string {
+  const l = queryLabel.toLowerCase();
+  if (l.includes("mnemonic") || l.includes("seed") || l.includes("bip39") || l.includes("recovery")) return "Seed Phrase";
+  if (l.includes("binance") || l.includes("coinbase") || l.includes("kraken") ||
+      l.includes("bybit") || l.includes("okx") || l.includes("kucoin") ||
+      l.includes("huobi") || l.includes("gate") || l.includes("bitget") || l.includes("mexc") ||
+      l.includes("indodax") || l.includes("tokocrypto")) return "Exchange API";
+  if (l.includes("infura") || l.includes("alchemy") || l.includes("quicknode") ||
+      l.includes("moralis") || l.includes("helius") || l.includes("ankr") || l.includes("chainstack")) return "RPC Credential";
+  if (l.includes("stripe") || l.includes("commerce") || l.includes("payment")) return "Payment Gateway";
+  if (l.includes("solana") || l.includes("phantom") || l.includes("anchor") || l.includes("sol ")) return "Solana Key";
+  if (l.includes("btc") || l.includes("bitcoin") || l.includes("wif") || l.includes("xprv")) return "Bitcoin Key";
+  if (l.includes("tron") || l.includes("trx")) return "TRON Key";
+  if (l.includes("hardhat") || l.includes("truffle") || l.includes("foundry") || l.includes("deploy")) return "Web3 Framework";
+  if (l.includes("eth") || l.includes("evm") || l.includes("bsc") || l.includes("matic") ||
+      l.includes("avax") || l.includes("deployer") || l.includes("signer")) return "ETH/EVM Key";
+  if (l.includes("workflow") || l.includes("gitlab") || l.includes("circleci") || l.includes("jenkins") || l.includes("docker")) return "CI/CD";
+  if (l.includes("keystore") || l.includes("wallet") || l.includes("utc--") || l.includes("vault")) return "Wallet File";
+  if (l.includes("near") || l.includes("cosmos") || l.includes("polkadot") || l.includes("substrate")) return "Other Chain";
+  if (l.includes("python") || l.includes("go ") || l.includes("rust") || l.includes("typescript") || l.includes("jupyter")) return "Lang Pattern";
+  if (l.includes("ssh") || l.includes("rsa") || l.includes("openssh")) return "SSH Key";
+  return "Other";
+}
+
+// ── GET /api/latest-results ───────────────────────────────────────────────────
+router.get("/latest-results", (_req, res) => {
+  const findings = autoScanState.recentFindings.slice(0, 100);
+
+  const bySeverity: Record<string, number> = {};
+  const byCategory: Record<string, number> = {};
+  const byType: Record<string, number> = {};
+
+  for (const f of findings) {
+    bySeverity[f.severity] = (bySeverity[f.severity] ?? 0) + 1;
+    const cat = deriveCategory(f.queryLabel);
+    byCategory[cat] = (byCategory[cat] ?? 0) + 1;
+    const type = f.valuePreview ? f.valuePreview.split(":")[0].trim() : "Unknown";
+    byType[type] = (byType[type] ?? 0) + 1;
+  }
+
+  res.json({
+    findings,
+    stats: {
+      total: findings.length,
+      totalAllTime: autoScanState.totalNewFindings,
+      bySeverity,
+      byCategory,
+      byType,
+      lastScan: autoScanState.lastScan,
+      scanCount: autoScanState.scanCount,
+      scanProgress: { ...scanProgress, running: autoScanState.running },
+    },
+  });
 });
 
 export default router;

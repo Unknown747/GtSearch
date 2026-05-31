@@ -431,7 +431,35 @@
     .interval-label{font-size:10px;color:var(--muted);}
     .preview-btn{background:none;border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;transition:all .15s;margin-right:2px;}
     .preview-btn:hover{border-color:var(--primary);color:var(--primary);}
+
+    /* ── Dashboard ── */
+    .dash-wrap { max-width: 1280px; margin: 0 auto; padding: 1.25rem 1rem; }
+    .dash-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 14px; }
+    @media(max-width:640px) { .dash-stats { grid-template-columns: repeat(2,1fr); } }
+    .dash-stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 14px 12px; text-align: center; }
+    .dash-stat-crit { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.04); }
+    .dash-stat-high { border-color: rgba(251,146,60,0.35); background: rgba(251,146,60,0.04); }
+    .dash-stat-val { font-size: 28px; font-weight: bold; color: var(--primary); line-height: 1.1; }
+    .dash-stat-crit .dash-stat-val { color: var(--red); }
+    .dash-stat-high .dash-stat-val { color: var(--orange); }
+    .dash-stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 3px; }
+    .dash-progress-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 10px 14px; margin-bottom: 14px; }
+    .dash-progress-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+    .dash-progress-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .dash-progress-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.4s; }
+    .dash-chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 14px; }
+    .dash-chart-title { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
+    .dash-chart-empty { text-align: center; font-size: 11px; color: var(--muted); padding: 20px 0; display: none; }
+    .dash-table-card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 14px; }
+    .dash-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .dash-table th { text-align: left; padding: 6px 10px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .dash-table td { padding: 7px 10px; border-bottom: 1px solid rgba(30,30,30,0.8); vertical-align: middle; }
+    .dash-table tr:last-child td { border-bottom: none; }
+    .dash-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .dash-table .repo-cell { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dash-table .file-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--primary); }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
 
@@ -445,7 +473,8 @@
     <nav>
       <button class="nav-btn active" id="nav-search"   onclick="showView('search')">Search</button>
       <button class="nav-btn"        id="nav-autoscan" onclick="showView('autoscan')">Auto-Scan</button>
-      <button class="nav-btn"        id="nav-history"  onclick="showView('history')">History</button>
+      <button class="nav-btn"        id="nav-history"   onclick="showView('history')">History</button>
+      <button class="nav-btn"        id="nav-dashboard" onclick="showView('dashboard')">📊 Dashboard</button>
     </nav>
   </div>
 </header>
@@ -694,6 +723,48 @@
       </div>
     </div>
     <div id="as-findings-list"></div>
+  </div>
+</div>
+
+<!-- Dashboard View -->
+<div id="view-dashboard" style="display:none">
+  <div class="dash-wrap">
+    <div class="dash-stats">
+      <div class="dash-stat-card"><div class="dash-stat-val" id="dash-total">0</div><div class="dash-stat-label">Total Temuan</div></div>
+      <div class="dash-stat-card dash-stat-crit"><div class="dash-stat-val" id="dash-critical">0</div><div class="dash-stat-label">CRITICAL</div></div>
+      <div class="dash-stat-card dash-stat-high"><div class="dash-stat-val" id="dash-high">0</div><div class="dash-stat-label">HIGH</div></div>
+      <div class="dash-stat-card"><div class="dash-stat-val" id="dash-scans">0</div><div class="dash-stat-label">Total Scan</div></div>
+    </div>
+    <div class="dash-progress-wrap" id="dash-progress-wrap" style="display:none">
+      <div class="dash-progress-label"><span>⬤ Scan berjalan…</span><span id="dash-progress-pct">0%</span></div>
+      <div class="dash-progress-track"><div class="dash-progress-fill" id="dash-progress-fill" style="width:0%"></div></div>
+    </div>
+    <div class="dash-chart-card">
+      <div class="dash-chart-title">📊 Temuan per Kategori</div>
+      <div style="position:relative;height:220px"><canvas id="dash-category-chart"></canvas></div>
+      <div class="dash-chart-empty" id="dash-chart-empty">Belum ada temuan — jalankan Auto-Scan untuk mengisi chart ini</div>
+    </div>
+    <div class="dash-chart-card" style="margin-top:12px">
+      <div class="dash-chart-title">🔴 Distribusi Severity</div>
+      <div style="position:relative;height:160px"><canvas id="dash-severity-chart"></canvas></div>
+    </div>
+    <div class="dash-table-card" style="margin-top:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="dash-chart-title" style="margin-bottom:0">📋 Tabel Temuan Terbaru</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-outline" style="font-size:10px;padding:3px 8px" onclick="exportFindings('csv')">⬇ CSV</button>
+          <button class="btn btn-outline" style="font-size:10px;padding:3px 8px" onclick="exportFindings('json')">⬇ JSON</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="dash-table">
+          <thead><tr><th>Severity</th><th>Repo</th><th>File</th><th>Tipe</th><th>Confidence</th><th>Aksi</th></tr></thead>
+          <tbody id="dash-table-body"></tbody>
+        </table>
+      </div>
+      <div class="dash-chart-empty" id="dash-table-empty">Belum ada temuan</div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:8px">Auto-refresh setiap 30s &nbsp;·&nbsp; <span id="dash-last-refresh">—</span></div>
   </div>
 </div>
 
@@ -1491,12 +1562,15 @@ function rerun(q) { document.getElementById('q-input').value=q; S.page=1; showVi
 /* ── Views ──────────────────────────────────────────────────────────────────── */
 function showView(v) {
   S.view=v;
-  ['search','autoscan','history'].forEach(n=>{
-    document.getElementById(`view-${n}`).style.display=(v===n?(n==='search'?'flex':'block'):'none');
-    document.getElementById(`nav-${n}`).className='nav-btn'+(v===n?' active':'');
+  ['search','autoscan','history','dashboard'].forEach(n=>{
+    const viewEl=document.getElementById(`view-${n}`);
+    const navEl=document.getElementById(`nav-${n}`);
+    if(viewEl) viewEl.style.display=(v===n?(n==='search'?'flex':'block'):'none');
+    if(navEl) navEl.className='nav-btn'+(v===n?' active':'');
   });
   if(v==='history') renderHistory();
   if(v==='autoscan') { fetchAutoScanStatus(); }
+  if(v==='dashboard') { fetchDashboard(); }
 }
 
 /* ── Copy ───────────────────────────────────────────────────────────────────── */
@@ -2052,6 +2126,103 @@ async function toggleStrictMode(){
   }catch{toast('Gagal mengubah mode strict.');}
 }
 
+/* ── Dashboard ──────────────────────────────────────────────────────────────── */
+let dashCategoryChart=null, dashSeverityChart=null;
+
+async function fetchDashboard(){
+  try{
+    const r=await fetch('/api/latest-results');
+    if(!r.ok) return;
+    const d=await r.json();
+    renderDashboard(d);
+  }catch{}
+}
+
+function renderDashboard(d){
+  const {findings=[],stats={}}=d;
+  const bySev=stats.bySeverity||{};
+  const byCat=stats.byCategory||{};
+  const prog=stats.scanProgress||{};
+
+  const el=id=>document.getElementById(id);
+  if(el('dash-total')) el('dash-total').textContent=stats.total??0;
+  if(el('dash-critical')) el('dash-critical').textContent=bySev['CRITICAL']??0;
+  if(el('dash-high')) el('dash-high').textContent=bySev['HIGH']??0;
+  if(el('dash-scans')) el('dash-scans').textContent=stats.scanCount??0;
+  if(el('dash-last-refresh')) el('dash-last-refresh').textContent='Refresh: '+new Date().toLocaleTimeString('id-ID');
+
+  const pw=el('dash-progress-wrap');
+  if(pw){
+    if(prog.running&&prog.total>0){
+      pw.style.display='block';
+      if(el('dash-progress-pct')) el('dash-progress-pct').textContent=(prog.percent||0)+'%';
+      if(el('dash-progress-fill')) el('dash-progress-fill').style.width=(prog.percent||0)+'%';
+    } else { pw.style.display='none'; }
+  }
+
+  const catKeys=Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]).slice(0,12);
+  const catVals=catKeys.map(k=>byCat[k]);
+  const catColors=['#00ff7f','#22d3ee','#818cf8','#fb923c','#f87171','#facc15','#a78bfa','#34d399','#f472b6','#60a5fa','#fb7185','#4ade80'];
+  if(el('dash-chart-empty')) el('dash-chart-empty').style.display=catKeys.length?'none':'block';
+  if(catKeys.length) renderDashChart('dash-category-chart',catKeys,catVals,catColors);
+
+  renderDashChart('dash-severity-chart',['CRITICAL','HIGH','MEDIUM','LOW'],
+    ['CRITICAL','HIGH','MEDIUM','LOW'].map(k=>bySev[k]??0),
+    ['#ef4444','#fb923c','#facc15','#71717a']);
+
+  const tbody=el('dash-table-body');
+  const tEmpty=el('dash-table-empty');
+  if(!findings.length){
+    if(tbody) tbody.innerHTML='';
+    if(tEmpty) tEmpty.style.display='block';
+  } else {
+    if(tEmpty) tEmpty.style.display='none';
+    if(tbody) tbody.innerHTML=findings.slice(0,50).map(f=>{
+      const sc=f.severity==='CRITICAL'?'sev-critical':f.severity==='HIGH'?'sev-high':f.severity==='MEDIUM'?'sev-medium':'sev-low';
+      const cc=f.confidence>=70?'#4ade80':f.confidence>=40?'#fbbf24':'#f87171';
+      const type=f.valuePreview?f.valuePreview.split(':')[0].trim():'—';
+      const fname=f.path?f.path.split('/').pop()||f.path:'—';
+      return `<tr>
+        <td><span class="sev ${sc}" style="font-size:10px">${esc(f.severity)}</span></td>
+        <td class="repo-cell"><a href="https://github.com/${esc(f.repo)}" target="_blank" rel="noopener" style="color:var(--muted);text-decoration:none" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--muted)'">${esc(f.repo)}</a></td>
+        <td class="file-cell" title="${esc(f.path)}">${esc(fname)}</td>
+        <td style="color:var(--muted);font-size:10px">${esc(type)}</td>
+        <td><span style="color:${cc};font-weight:600;font-size:11px">${f.confidence}%</span></td>
+        <td><a href="${esc(f.fileUrl)}" target="_blank" rel="noopener" class="btn btn-outline" style="font-size:10px;padding:2px 7px">↗</a></td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+function renderDashChart(canvasId,labels,data,colors){
+  if(typeof Chart==='undefined') return;
+  const canvas=document.getElementById(canvasId);
+  if(!canvas) return;
+  const existing=Chart.getChart(canvas);
+  if(existing) existing.destroy();
+  if(!data.some(v=>v>0)) return;
+  new Chart(canvas,{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[{
+        label:'Temuan',data,
+        backgroundColor:labels.map((_,i)=>(colors[i%colors.length]||'#00ff7f')+'cc'),
+        borderColor:labels.map((_,i)=>colors[i%colors.length]||'#00ff7f'),
+        borderWidth:1,borderRadius:3
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.raw} temuan`}}},
+      scales:{
+        x:{ticks:{color:'#71717a',font:{size:10},maxRotation:35},grid:{color:'#1e1e1e'}},
+        y:{ticks:{color:'#71717a',font:{size:10},stepSize:1},grid:{color:'#1e1e1e'},beginAtZero:true}
+      }
+    }
+  });
+}
+
 /* ── Init ───────────────────────────────────────────────────────────────────── */
 (function init() {
   document.getElementById('q-input').addEventListener('keydown',e=>{ if(e.key==='Enter') doSearch(); });
@@ -2075,8 +2246,10 @@ async function toggleStrictMode(){
   setInterval(()=>{ fetchAutoScanStatus(); updateAutoScanSidebar(); }, 15000);
   // Trend chart refresh every 5 min (SSE handles real-time)
   setInterval(fetchAndRenderTrend, 5*60*1000);
+  // Dashboard auto-refresh every 30s
+  setInterval(()=>{ if(S.view==='dashboard') fetchDashboard(); }, 30000);
   // Re-render chart on window resize
-  window.addEventListener('resize', ()=>{ if(trendData.length) renderTrendChart(); });
+  window.addEventListener('resize', ()=>{ if(trendData.length) renderTrendChart(); if(S.view==='dashboard') fetchDashboard(); });
 
   // Countdown ticker every second
   setInterval(()=>{ if(S.autoScan) { updateAutoScanSidebar(); if(S.view==='autoscan') { const sub=document.getElementById('as-ctrl-sub'); if(sub&&S.autoScan.enabled&&S.autoScan.nextScan&&!S.autoScan.running){ const diff=Math.max(0,S.autoScan.nextScan-Date.now()); const mins=Math.floor(diff/60000); const secs=Math.floor((diff%60000)/1000); sub.innerHTML=`Next scan: <b>${mins}m ${secs}s</b>`+(S.autoScan.lastScan?` &nbsp;·&nbsp; Terakhir: ${new Date(S.autoScan.lastScan).toLocaleTimeString('id-ID')}`:''); } } } }, 1000);
