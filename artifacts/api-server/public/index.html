@@ -199,6 +199,19 @@
 
     .snippet { background: var(--bg); border: 1px solid rgba(255,255,255,0.06); border-radius: 3px; padding: 6px 8px; font-size: 11px; color: var(--muted); margin-top: 8px; overflow: auto; white-space: pre-wrap; word-break: break-all; max-height: 120px; line-height: 1.6; }
 
+    /* Filter row */
+    .filter-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding-top:7px; border-top:1px solid var(--border); margin-top:7px; }
+    .filter-chk { display:flex; align-items:center; gap:5px; cursor:pointer; user-select:none; }
+    .filter-chk input[type=checkbox] { accent-color:var(--primary); cursor:pointer; width:12px; height:12px; flex-shrink:0; }
+    .filter-chk span { font-size:11px; color:var(--muted); transition:color 0.15s; }
+    .filter-chk:hover span { color:var(--text); }
+    /* Repo badges */
+    .repo-badge { font-size:9px; padding:0 5px; border-radius:2px; font-weight:600; margin-left:4px; vertical-align:middle; line-height:16px; display:inline-block; }
+    .badge-fork { background:rgba(96,165,250,0.1); color:#60a5fa; border:1px solid rgba(96,165,250,0.2); }
+    .badge-arch { background:rgba(113,113,122,0.12); color:var(--muted); border:1px solid var(--border); }
+    /* Sort indicator */
+    .sort-badge { font-size:9px; color:var(--primary); background:var(--primary-dim); border:1px solid var(--primary-border); padding:1px 6px; border-radius:3px; margin-right:6px; }
+
     /* Pagination */
     .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; padding-top: 10px; }
     .page-info { font-size: 11px; color: var(--muted); }
@@ -357,6 +370,11 @@
         <button class="btn btn-primary" id="btn-search" onclick="doSearch()">🔍 Search</button>
       </div>
       <input class="input" id="scope-input" type="text" placeholder="Scope: username atau org GitHub (opsional)" autocomplete="off">
+      <div class="filter-row">
+        <label class="filter-chk" title="Exclude hasil dari repo fork — mengurangi duplikat secara signifikan"><input type="checkbox" id="f-no-fork" checked> <span>Exclude forks</span></label>
+        <label class="filter-chk" title="Hanya repo yang masih aktif sejak 2023"><input type="checkbox" id="f-active"> <span>Active (2023+)</span></label>
+        <label class="filter-chk" title="Tampilkan CRITICAL terlebih dahulu"><input type="checkbox" id="f-sort-sev" checked> <span>Sort: severity</span></label>
+      </div>
       <div class="mobile-pills" id="mobile-pills"></div>
       <div class="query-preview" id="q-preview" style="display:none">
         <span class="preview-zap">⚡</span>
@@ -498,6 +516,7 @@ const S = {
   config: null,
   autoScan: null,
   openCats: new Set(),
+  sortBySev: true,
 };
 
 /* ── Severity (client-side fallback) ────────────────────────────────────────── */
@@ -642,9 +661,13 @@ function pickDork(ci,di) { const q=DORKS[ci].queries[di].q; document.getElementB
 
 /* ── Search ─────────────────────────────────────────────────────────────────── */
 function doSearch() {
-  const q=document.getElementById('q-input').value.trim(); if(!q) return;
+  let q=document.getElementById('q-input').value.trim(); if(!q) return;
   const scope=document.getElementById('scope-input').value.trim();
-  S.activeQuery=scope?`${q} user:${scope}`:q; S.page=1; runSearch();
+  if(scope) q+=` user:${scope}`;
+  if(document.getElementById('f-no-fork').checked)   q+=' fork:false';
+  if(document.getElementById('f-active').checked)    q+=' pushed:>2023-01-01';
+  S.sortBySev=document.getElementById('f-sort-sev').checked;
+  S.activeQuery=q; S.page=1; runSearch();
 }
 async function runSearch() {
   if(!S.activeQuery) return;
@@ -672,19 +695,29 @@ function renderContent(data,error,loading) {
   const totalCount=data.total_count??0;
   const totalPages=Math.ceil(Math.min(totalCount,1000)/30);
   const tgOk=S.config&&S.config.telegramConfigured;
-  let html=`<div class="results-meta"><span><span class="count-hi">${totalCount.toLocaleString()}</span> hasil ditemukan${totalCount>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>Hal. ${S.page} / ${totalPages||1}</span></div>`;
+  const sortLabel=S.sortBySev?'<span class="sort-badge">↑ severity</span>':'';
+  let html=`<div class="results-meta"><span><span class="count-hi">${totalCount.toLocaleString()}</span> hasil ditemukan${totalCount>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>${sortLabel}Hal. ${S.page} / ${totalPages||1}</span></div>`;
   if(totalCount>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Notifikasi CRITICAL/HIGH otomatis dikirim ke Telegram</div>`;
-  if(totalCount>0) html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman.</div>`;
+  if(totalCount>0) html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman. Diurutkan berdasarkan waktu index terbaru.</div>`;
   if(!data.items||data.items.length===0) {
-    html+=`<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil</div><div class="empty-sub">Coba query berbeda atau hapus filter scope</div></div>`;
+    html+=`<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil</div><div class="empty-sub">Coba query berbeda atau hapus filter (Exclude forks / Active)</div></div>`;
   } else {
-    data.items.forEach(item=>{
+    const SEV_ORD={CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3};
+    const items=[...data.items];
+    if(S.sortBySev) items.sort((a,b)=>{
+      const sa=a.severity||severity(a.path||'',a.snippet||(a.text_matches&&a.text_matches[0]?.fragment)||'');
+      const sb=b.severity||severity(b.path||'',b.snippet||(b.text_matches&&b.text_matches[0]?.fragment)||'');
+      return (SEV_ORD[sa]??3)-(SEV_ORD[sb]??3);
+    });
+    items.forEach(item=>{
       const repo=item.repository||{};
       const snippet=item.snippet||(item.text_matches&&item.text_matches[0]&&item.text_matches[0].fragment)||'';
       const sev=item.severity||severity(item.path||'',snippet);
       const stars=(repo.stargazers_count??0).toLocaleString();
-      const upd=repo.updated_at?new Date(repo.updated_at).toLocaleDateString('id-ID'):'—';
-      html+=`<div class="result-card"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a><span class="sep">/</span><a href="${esc(item.html_url||'#')}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a></div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span><span class="meta-item">🕐 ${upd}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="copy-btn" data-copy="${esc(item.html_url||'')}" title="Salin URL">⎘</button></div></div>${snippet?`<pre class="snippet">${esc(snippet)}</pre>`:''}</div>`;
+      const pushed=repo.pushed_at?new Date(repo.pushed_at).toLocaleDateString('id-ID'):(repo.updated_at?new Date(repo.updated_at).toLocaleDateString('id-ID'):'—');
+      const forkBadge=repo.fork?'<span class="repo-badge badge-fork">fork</span>':'';
+      const archBadge=repo.archived?'<span class="repo-badge badge-arch">archived</span>':'';
+      html+=`<div class="result-card"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${esc(item.html_url||'#')}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a></div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span><span class="meta-item">📅 ${pushed}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="copy-btn" data-copy="${esc(item.html_url||'')}" title="Salin URL">⎘</button></div></div>${snippet?`<pre class="snippet">${esc(snippet)}</pre>`:''}</div>`;
     });
     if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
   }
