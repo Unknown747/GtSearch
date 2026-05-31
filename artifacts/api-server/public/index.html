@@ -198,6 +198,7 @@
     .sev-LOW      { background:rgba(59,130,246,.1); color:#60a5fa; border-color:rgba(59,130,246,.3); }
 
     .snippet { background: var(--bg); border: 1px solid rgba(255,255,255,0.06); border-radius: 3px; padding: 6px 8px; font-size: 11px; color: var(--muted); margin-top: 8px; overflow: auto; white-space: pre-wrap; word-break: break-all; max-height: 120px; line-height: 1.6; }
+    .snippet mark.hit { background:rgba(250,204,21,0.22); color:var(--yellow); border-radius:2px; padding:0 2px; font-style:normal; }
 
     /* Filter row */
     .filter-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding-top:7px; border-top:1px solid var(--border); margin-top:7px; }
@@ -505,6 +506,15 @@ const DORKS = [
     { label:'Private Keys (raw)',   q:'"BEGIN RSA PRIVATE KEY"' },
     { label:'OpenSSH Private Key',  q:'"BEGIN OPENSSH PRIVATE KEY"' },
   ]},
+  { cat:'GitHub Actions & CI/CD', icon:'⚙', color:'#a78bfa', queries:[
+    { label:'PRIVATE_KEY in workflow',  q:'path:.github/workflows "PRIVATE_KEY" extension:yml' },
+    { label:'MNEMONIC in workflow',     q:'path:.github/workflows "MNEMONIC" extension:yml' },
+    { label:'BEGIN RSA in workflow',    q:'path:.github/workflows "BEGIN RSA PRIVATE KEY"' },
+    { label:'API_KEY in workflow',      q:'path:.github/workflows "API_KEY" extension:yml' },
+    { label:'Hardcoded PAT in CI',      q:'path:.github/workflows "ghp_" OR "github_pat_"' },
+    { label:'Discord webhook in CI',    q:'path:.github/workflows "DISCORD_WEBHOOK"' },
+    { label:'Slack token in CI',        q:'path:.github/workflows "SLACK_TOKEN"' },
+  ]},
 ];
 
 /* ── State ──────────────────────────────────────────────────────────────────── */
@@ -517,11 +527,21 @@ const S = {
   autoScan: null,
   openCats: new Set(),
   sortBySev: true,
+  seenUrls: new Set(),
 };
 
-/* ── Severity (client-side fallback) ────────────────────────────────────────── */
+/* ── Severity (client-side) ──────────────────────────────────────────────────── */
+const SECRET_REGEXES=[
+  /AKIA[0-9A-Z]{16}/,                        // AWS Access Key ID
+  /0x[0-9a-fA-F]{64}/,                       // Ethereum private key (0x-prefixed)
+  /\b[0-9a-fA-F]{64}\b/,                     // Raw 32-byte hex key
+  /ghp_[A-Za-z0-9]{36}/,                     // GitHub PAT (classic)
+  /[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/,       // Bitcoin WIF private key
+];
 function severity(path, snippet) {
-  const t = (path + ' ' + snippet).toLowerCase();
+  const raw=path+' '+snippet;
+  const t=raw.toLowerCase();
+  for(const re of SECRET_REGEXES){if(re.test(raw))return 'CRITICAL';}
   if (t.includes('private_key')||t.includes('privatekey')||t.includes('mnemonic')||
       t.includes('seed phrase')||t.includes('keystore')||t.includes('ciphertext')||
       t.includes('begin rsa')||t.includes('begin openssh')||t.includes('id_rsa')) return 'CRITICAL';
@@ -534,6 +554,23 @@ function severity(path, snippet) {
 /* ── HTML escape ────────────────────────────────────────────────────────────── */
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* ── Snippet highlighter ─────────────────────────────────────────────────────── */
+function highlightSnippet(frag, matches) {
+  if(!frag) return '';
+  if(!matches||!matches.length) return `<pre class="snippet">${esc(frag)}</pre>`;
+  const ms=[...matches].sort((a,b)=>a.indices[0]-b.indices[0]);
+  let out='',last=0;
+  for(const m of ms){
+    const [s,e]=m.indices;
+    if(s<last||s>=frag.length) continue;
+    out+=esc(frag.slice(last,s));
+    out+=`<mark class="hit">${esc(frag.slice(s,Math.min(e,frag.length)))}</mark>`;
+    last=Math.min(e,frag.length);
+  }
+  out+=esc(frag.slice(last));
+  return `<pre class="snippet">${out}</pre>`;
 }
 
 /* ── History ────────────────────────────────────────────────────────────────── */
@@ -667,6 +704,7 @@ function doSearch() {
   if(document.getElementById('f-no-fork').checked)   q+=' fork:false';
   if(document.getElementById('f-active').checked)    q+=' pushed:>2023-01-01';
   S.sortBySev=document.getElementById('f-sort-sev').checked;
+  S.seenUrls=new Set();
   S.activeQuery=q; S.page=1; runSearch();
 }
 async function runSearch() {
@@ -709,15 +747,19 @@ function renderContent(data,error,loading) {
       const sb=b.severity||severity(b.path||'',b.snippet||(b.text_matches&&b.text_matches[0]?.fragment)||'');
       return (SEV_ORD[sa]??3)-(SEV_ORD[sb]??3);
     });
-    items.forEach(item=>{
+    const deduped=items.filter(item=>!S.seenUrls.has(item.html_url||''));
+    deduped.forEach(item=>{
+      S.seenUrls.add(item.html_url||'');
       const repo=item.repository||{};
-      const snippet=item.snippet||(item.text_matches&&item.text_matches[0]&&item.text_matches[0].fragment)||'';
-      const sev=item.severity||severity(item.path||'',snippet);
+      const tm=item.text_matches&&item.text_matches[0];
+      const fragment=tm?.fragment||item.snippet||'';
+      const matches=tm?.matches||[];
+      const sev=item.severity||severity(item.path||'',fragment);
       const stars=(repo.stargazers_count??0).toLocaleString();
       const pushed=repo.pushed_at?new Date(repo.pushed_at).toLocaleDateString('id-ID'):(repo.updated_at?new Date(repo.updated_at).toLocaleDateString('id-ID'):'—');
       const forkBadge=repo.fork?'<span class="repo-badge badge-fork">fork</span>':'';
       const archBadge=repo.archived?'<span class="repo-badge badge-arch">archived</span>':'';
-      html+=`<div class="result-card"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${esc(item.html_url||'#')}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a></div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span><span class="meta-item">📅 ${pushed}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="copy-btn" data-copy="${esc(item.html_url||'')}" title="Salin URL">⎘</button></div></div>${snippet?`<pre class="snippet">${esc(snippet)}</pre>`:''}</div>`;
+      html+=`<div class="result-card"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${esc(item.html_url||'#')}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a></div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span><span class="meta-item">📅 ${pushed}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="copy-btn" data-copy="${esc(item.html_url||'')}" title="Salin URL">⎘</button></div></div>${highlightSnippet(fragment,matches)}</div>`;
     });
     if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
   }

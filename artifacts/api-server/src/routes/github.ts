@@ -160,8 +160,21 @@ function escHtml(s: string): string {
 }
 
 // ── Severity classifier ───────────────────────────────────────────────────────
+// Regex patterns that indicate a real secret value (not just a keyword)
+const CRITICAL_REGEXES: RegExp[] = [
+  /AKIA[0-9A-Z]{16}/,                         // AWS Access Key ID
+  /0x[0-9a-fA-F]{64}/,                        // Ethereum private key (0x-prefixed)
+  /\b[0-9a-fA-F]{64}\b/,                      // Raw 32-byte hex key (ETH/BTC)
+  /ghp_[A-Za-z0-9]{36}/,                      // GitHub PAT (classic)
+  /github_pat_[A-Za-z0-9_]{82}/,              // GitHub PAT (fine-grained)
+  /[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/,        // Bitcoin WIF private key
+];
+
 function severity(filePath: string, snippet: string): "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" {
-  const t = (filePath + " " + snippet).toLowerCase();
+  const raw = filePath + " " + snippet;
+  const t = raw.toLowerCase();
+  // Regex check first — confirms an actual secret value is present
+  for (const re of CRITICAL_REGEXES) { if (re.test(raw)) return "CRITICAL"; }
   if (
     t.includes("private_key") || t.includes("privatekey") ||
     t.includes("mnemonic") || t.includes("seed phrase") ||
@@ -284,6 +297,12 @@ const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   { label: "Infura Project ID",        q: 'filename:.env "INFURA_PROJECT_ID"' },
   { label: "Alchemy API key",          q: 'filename:.env "ALCHEMY_API_KEY"' },
   { label: "OpenSea API key",          q: 'filename:.env "OPENSEA_API_KEY"' },
+
+  // ── GitHub Actions / CI-CD ───────────────────────────────────────────────
+  { label: "PRIVATE_KEY in workflow",  q: 'path:.github/workflows "PRIVATE_KEY" extension:yml' },
+  { label: "MNEMONIC in workflow",     q: 'path:.github/workflows "MNEMONIC" extension:yml' },
+  { label: "BEGIN RSA in workflow",    q: 'path:.github/workflows "BEGIN RSA PRIVATE KEY"' },
+  { label: "hardcoded PAT in CI",      q: 'path:.github/workflows "ghp_" OR "github_pat_"' },
 ];
 
 export interface AutoScanFinding {
