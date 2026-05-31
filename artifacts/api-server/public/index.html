@@ -441,11 +441,11 @@ const DORKS = [
   { cat:'Wallet & Seed Phrases', icon:'👛', color:'#facc15', queries:[
     { label:'mnemonic .env',          q:'filename:.env "MNEMONIC"' },
     { label:'PRIVATE_KEY .env',       q:'filename:.env "PRIVATE_KEY"' },
-    { label:'wallet.json',             q:'filename:wallet.json "crypto" "ciphertext"' },
-    { label:'seed phrase JS',         q:'"bip39" "mnemonic" "entropy"' },
+    { label:'seed phrase JS',         q:'"bip39" "mnemonic" "entropy" language:javascript' },
     { label:'recovery.txt',           q:'filename:recovery.txt "phrase"' },
     { label:'mnemonic.json',          q:'filename:mnemonic.json' },
     { label:'Trust Wallet mnemonic',  q:'"trustwallet" "mnemonic" extension:json' },
+    { label:'MetaMask seed words',    q:'"metamask" "seed" "words" extension:json' },
   ]},
   { cat:'Exchange API Keys', icon:'🔑', color:'#f87171', queries:[
     { label:'Binance API key',  q:'filename:.env "BINANCE_API_KEY"' },
@@ -479,6 +479,11 @@ const DORKS = [
   { cat:'Wallet & Backup Files', icon:'👜', color:'#fb923c', queries:[
     { label:'Ethereum wallet',      q:'filename:keystore.json "version" "crypto" "ciphertext"' },
     { label:'UTC-- wallet',         q:'filename:UTC-- "ciphertext"' },
+    { label:'wallet.json',          q:'filename:wallet.json "crypto" "ciphertext"' },
+    { label:'MetaMask vault',       q:'filename:vault.json "data" "iv" "salt"' },
+    { label:'Solana keypair',       q:'filename:keypair.json extension:json language:json "[" NOT "test"' },
+    { label:'Exodus backup',        q:'filename:exodus.wallet.bak OR filename:exodus-backup' },
+    { label:'Phantom wallet key',   q:'filename:.env "PHANTOM_PRIVATE_KEY"' },
     { label:'Private Keys (raw)',   q:'"BEGIN RSA PRIVATE KEY"' },
     { label:'OpenSSH Private Key',  q:'"BEGIN OPENSSH PRIVATE KEY"' },
   ]},

