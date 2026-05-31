@@ -1408,14 +1408,13 @@ function renderAutoScan() {
 
   // Pill & running dot
   const pill=document.getElementById('as-pill');
-  pill.textContent=as.enabled?'ON':'OFF';
-  pill.className='as-status-pill '+(as.enabled?'on':'off');
-  document.getElementById('as-running-dot').style.display=as.running?'inline':'none';
+  if(pill){ pill.textContent=as.enabled?'ON':'OFF'; pill.className='as-status-pill '+(as.enabled?'on':'off'); }
+  const runDot=document.getElementById('as-running-dot');
+  if(runDot) runDot.style.display=as.running?'inline':'none';
 
   // Toggle button
   const btn=document.getElementById('btn-toggle-as');
-  btn.textContent=as.enabled?'⏹ Stop':'▶ Aktifkan';
-  btn.className='btn '+(as.enabled?'btn-danger':'btn-primary');
+  if(btn){ btn.textContent=as.enabled?'⏹ Stop':'▶ Aktifkan'; btn.className='btn '+(as.enabled?'btn-danger':'btn-primary'); }
   const strictBtn=document.getElementById('btn-strict');
   const strictDesc=document.getElementById('strict-desc');
   if(strictBtn){
@@ -1917,17 +1916,18 @@ function initSSE() {
     try {
       const d = JSON.parse(e.data);
       // Refresh status & render
-      fetchAutoScanStatus().then(()=>{ if(S.view==='autoscan') renderAutoScan(); });
+      fetchAutoScanStatus().then(()=>{ if(S.view==='autoscan') renderAutoScan(); }).catch(()=>{});
       fetchAndRenderTrend();
-      // Browser notification
-      if(d.critical>0) sendBrowserNotif(`🚨 ${d.critical} temuan CRITICAL baru!`, `Auto-scan menemukan ${d.count} temuan. Cek tab Auto-Scan.`);
-      // Sound
-      playBeep();
+      // Browser notification + beep hanya untuk CRITICAL
+      if(d.critical>0){
+        sendBrowserNotif(`🚨 ${d.critical} temuan CRITICAL baru!`, `Auto-scan menemukan ${d.count} temuan. Cek tab Auto-Scan.`);
+        playBeep();
+      }
       toast(`🔔 ${d.count} temuan baru — ${d.critical} CRITICAL, ${d.high} HIGH`);
     } catch{}
   });
-  sseSource.addEventListener('scan-complete', e => {
-    fetchAutoScanStatus().then(()=>{ if(S.view==='autoscan') renderAutoScan(); });
+  sseSource.addEventListener('scan-complete', () => {
+    fetchAutoScanStatus().then(()=>{ if(S.view==='autoscan') renderAutoScan(); }).catch(()=>{});
     fetchAndRenderTrend();
   });
   sseSource.onerror = () => {
@@ -1973,7 +1973,6 @@ async function testSnippet() {
     if(!r.ok){ res.innerHTML=`<span style="color:var(--red)">Error: ${esc(d.error||'Gagal')}</span>`; return; }
     const conf=typeof d.confidence==='number'?Math.min(100,Math.max(0,Math.round(d.confidence))):null;
     const sevColors={'CRITICAL':'var(--red)','HIGH':'var(--orange)','MEDIUM':'var(--yellow)','LOW':'var(--muted)','INFO':'var(--muted)'};
-    const sevCol=sevColors[d.severity]||'var(--muted)';
     res.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start">
       <div><div style="font-size:9px;color:var(--muted)">SEVERITY</div><span class="sev sev-${d.severity}">${d.severity}</span></div>
       ${conf!==null?`<div><div style="font-size:9px;color:var(--muted)">CONFIDENCE</div><b style="color:${conf>=70?'#4ade80':conf>=40?'#facc15':'#f87171'}">${conf}%</b></div>`:''}

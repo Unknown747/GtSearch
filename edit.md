@@ -1,5 +1,16 @@
 # Edit History — GH Dork
 
+## 2026-05-31 — Session 7: Bug Fix Audit (#32)
+
+### #32 Bug Fix — Audit 6 Fitur Baru
+- **Fix 1 — Confidence scale mismatch**: backend mengembalikan 0–100 tapi frontend melakukan `conf×100` → tampil `CONF 10000%`. Fix: `Math.round(conf)` bukan `Math.round(conf*100)` di `confidenceBadge()` dan `testSnippet()`.
+- **Fix 2 — CSS class salah di Query Tester**: severity badge memakai `sev-badge` yang tidak ada di CSS → tampil tanpa styling. Fix: ganti ke `sev sev-${severity}` (class yang benar).
+- **Fix 3 — Dead variable `sevCol`**: deklarasi `const sevCol = ...` di `testSnippet()` tapi tidak pernah dipakai. Dihapus.
+- **Fix 4 — Unhandled Promise Rejection di SSE**: `fetchAutoScanStatus().then(...)` di `findings` dan `scan-complete` handler tanpa `.catch()` → bisa throw di background. Ditambah `.catch(()=>{})`.
+- **Fix 5 — `playBeep()` terlalu agresif**: beep berbunyi untuk SEMUA temuan baru, seharusnya hanya CRITICAL (sama seperti browser notification). Dipindah ke dalam `if(d.critical>0)` guard.
+- **Fix 6 — Null pointer di `renderAutoScan`**: `pill`, `runDot`, `btn` diakses langsung tanpa null check. Ditambah guard `if(pill)`, `if(runDot)`, `if(btn)`.
+- File: `artifacts/api-server/public/index.html`
+
 ## 2026-05-31 — Session 6: 6 Fitur Baru (#26–#31)
 
 ### #26 Confidence Score
