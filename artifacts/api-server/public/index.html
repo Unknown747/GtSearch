@@ -18,6 +18,7 @@
       --muted-bg: #1a1a1a;
       --yellow: #facc15;
       --red: #ef4444;
+      --orange: #fb923c;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
@@ -45,10 +46,7 @@
     .logo { font-size: 12px; font-weight: bold; letter-spacing: 0.12em; }
     .logo .g { color: var(--primary); }
     .logo .h { color: var(--text); }
-    .badge {
-      font-size: 10px; color: var(--muted); background: var(--muted-bg);
-      border: 1px solid #2a2a2a; padding: 1px 6px; border-radius: 9999px;
-    }
+    .badge { font-size: 10px; color: var(--muted); background: var(--muted-bg); border: 1px solid #2a2a2a; padding: 1px 6px; border-radius: 9999px; }
     nav { display: flex; gap: 2px; }
     .nav-btn {
       font: inherit; font-size: 11px; cursor: pointer;
@@ -59,35 +57,47 @@
     .nav-btn.active { color: var(--primary); background: var(--primary-dim); }
 
     /* ── Layout ── */
-    .layout {
-      max-width: 1280px; margin: 0 auto; padding: 1.25rem 1rem;
-      display: flex; gap: 1.25rem;
-    }
+    .layout { max-width: 1280px; margin: 0 auto; padding: 1.25rem 1rem; display: flex; gap: 1.25rem; }
     aside { width: 216px; flex-shrink: 0; }
-    .sticky { position: sticky; top: 56px; }
+    .sticky { position: sticky; top: 56px; max-height: calc(100vh - 70px); overflow-y: auto; }
     main { flex: 1; min-width: 0; }
 
     /* ── Card ── */
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; }
 
-    /* ── Status ── */
+    /* ── Sidebar Status ── */
     .status-box { padding: 10px; margin-bottom: 10px; }
-    .sec-label {
-      font-size: 10px; color: var(--muted); text-transform: uppercase;
-      letter-spacing: 0.12em; margin-bottom: 8px;
-    }
+    .sec-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
     .status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
     .status-row:last-child { margin-bottom: 0; }
     .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-    .dot-ok { background: var(--primary); }
+    .dot-ok   { background: var(--primary); }
     .dot-warn { background: var(--yellow); }
+    .dot-err  { background: var(--red); }
     .status-text { font-size: 11px; color: var(--muted); flex: 1; }
-    .tg-btn {
-      font: inherit; font-size: 12px; cursor: pointer;
-      background: transparent; border: none; color: var(--muted); padding: 0;
-      line-height: 1; transition: color 0.15s;
-    }
+    .tg-btn { font: inherit; font-size: 12px; cursor: pointer; background: transparent; border: none; color: var(--muted); padding: 0; line-height: 1; transition: color 0.15s; }
     .tg-btn:hover { color: var(--primary); }
+
+    /* Rate limit bar */
+    .rl-bar-wrap { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+    .rl-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .rl-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .rl-val { font-size: 10px; color: var(--muted); font-weight: 600; }
+    .rl-track { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .rl-fill { height: 100%; border-radius: 2px; transition: width 0.5s, background 0.5s; }
+
+    /* Auto-scan mini status in sidebar */
+    .as-mini { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+    .as-mini-row { display: flex; justify-content: space-between; align-items: center; }
+    .as-mini-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .as-toggle {
+      font: inherit; font-size: 10px; cursor: pointer;
+      padding: 1px 7px; border-radius: 3px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); transition: all 0.15s; white-space: nowrap;
+    }
+    .as-toggle:hover { border-color: var(--primary); color: var(--primary); }
+    .as-toggle.on { background: var(--primary-dim); border-color: var(--primary-border); color: var(--primary); }
+    .as-countdown { font-size: 10px; color: var(--muted); margin-top: 4px; }
 
     /* ── Dork Library ── */
     .lib-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 6px; padding: 0 2px; }
@@ -122,8 +132,7 @@
     .btn {
       font: inherit; font-size: 11px; cursor: pointer;
       padding: 6px 12px; border-radius: 4px; border: none;
-      transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px;
-      white-space: nowrap;
+      transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
     }
     .btn-primary { background: var(--primary); color: #000; font-weight: 600; }
     .btn-primary:hover { opacity: 0.88; }
@@ -131,36 +140,24 @@
     .btn-outline { background: transparent; color: var(--muted); border: 1px solid var(--border); }
     .btn-outline:hover { color: var(--text); border-color: var(--border-h); }
     .btn-outline:disabled { opacity: 0.4; cursor: not-allowed; }
-    .copy-btn {
-      font: inherit; cursor: pointer; background: transparent; border: none;
-      color: var(--muted); padding: 3px 4px; border-radius: 3px; font-size: 13px;
-      transition: color 0.15s; line-height: 1;
-    }
+    .btn-danger { background: transparent; color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+    .btn-danger:hover { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.4); }
+    .copy-btn { font: inherit; cursor: pointer; background: transparent; border: none; color: var(--muted); padding: 3px 4px; border-radius: 3px; font-size: 13px; transition: color 0.15s; line-height: 1; }
     .copy-btn:hover { color: var(--text); }
 
     /* ── Search Box ── */
     .search-card { padding: 10px; margin-bottom: 12px; }
     .search-row { display: flex; gap: 6px; margin-bottom: 6px; }
     .search-row .input { flex: 1; }
-    .query-preview {
-      display: flex; align-items: center; gap: 6px; margin-top: 6px;
-      background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px;
-    }
+    .query-preview { display: flex; align-items: center; gap: 6px; margin-top: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; }
     .preview-zap { color: var(--primary); font-size: 11px; flex-shrink: 0; }
     .preview-text { font-size: 11px; color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mobile-pills { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 8px; }
-    .pill {
-      font: inherit; font-size: 10px; cursor: pointer;
-      padding: 2px 8px; border-radius: 3px; border: 1px solid var(--border);
-      background: rgba(255,255,255,0.02); color: var(--muted); transition: all 0.15s;
-    }
+    .pill { font: inherit; font-size: 10px; cursor: pointer; padding: 2px 8px; border-radius: 3px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--muted); transition: all 0.15s; }
     .pill:hover { color: var(--primary); border-color: var(--primary-border); background: var(--primary-dim); }
 
     /* ── Banners ── */
-    .banner {
-      display: flex; gap: 8px; align-items: flex-start;
-      border-radius: 4px; padding: 9px 12px; margin-bottom: 10px;
-    }
+    .banner { display: flex; gap: 8px; align-items: flex-start; border-radius: 4px; padding: 9px 12px; margin-bottom: 10px; }
     .banner-warn { background: rgba(250,204,21,0.04); border: 1px solid rgba(250,204,21,0.15); }
     .banner-err  { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); }
     .banner-icon { flex-shrink: 0; margin-top: 1px; }
@@ -173,64 +170,41 @@
     code.hi { color: var(--primary); }
 
     /* ── Info bars ── */
-    .info-bar {
-      display: flex; align-items: center; gap: 6px; font-size: 11px;
-      padding: 5px 8px; border-radius: 4px; margin-bottom: 8px;
-    }
+    .info-bar { display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 5px 8px; border-radius: 4px; margin-bottom: 8px; }
     .info-tg   { color: rgba(0,255,127,0.7); background: rgba(0,255,127,0.04); border: 1px solid rgba(0,255,127,0.1); }
     .info-warn { color: rgba(250,204,21,0.7); background: rgba(250,204,21,0.04); border: 1px solid rgba(250,204,21,0.1); }
 
     /* ── Results ── */
-    .results-meta {
-      display: flex; justify-content: space-between; align-items: center;
-      font-size: 11px; color: var(--muted); margin-bottom: 8px;
-    }
+    .results-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
     .count-hi { color: var(--primary); font-weight: bold; }
-    .result-card {
-      background: var(--card); border: 1px solid var(--border); border-radius: 4px;
-      padding: 10px; margin-bottom: 6px; transition: border-color 0.15s;
-    }
+    .result-card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 10px; margin-bottom: 6px; transition: border-color 0.15s; }
     .result-card:hover { border-color: rgba(0,255,127,0.25); }
     .result-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
     .result-links { flex: 1; min-width: 0; }
     .result-repo { font-size: 11px; color: var(--muted); text-decoration: none; transition: color 0.15s; }
     .result-repo:hover { color: var(--primary); }
     .sep { color: rgba(255,255,255,0.2); margin: 0 4px; }
-    .result-file {
-      font-size: 11px; color: var(--primary); text-decoration: none;
-      display: inline; transition: opacity 0.15s;
-    }
+    .result-file { font-size: 11px; color: var(--primary); text-decoration: none; }
     .result-file:hover { text-decoration: underline; }
     .result-meta-row { display: flex; gap: 10px; margin-top: 3px; }
-    .meta-item { font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 3px; }
+    .meta-item { font-size: 10px; color: var(--muted); }
     .result-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
     /* Severity */
-    .sev {
-      font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid;
-      font-weight: 600; white-space: nowrap;
-    }
-    .sev-CRITICAL { background:rgba(239,68,68,.1);   color:#f87171; border-color:rgba(239,68,68,.3); }
-    .sev-HIGH     { background:rgba(249,115,22,.1);  color:#fb923c; border-color:rgba(249,115,22,.3); }
-    .sev-MEDIUM   { background:rgba(234,179,8,.1);   color:#facc15; border-color:rgba(234,179,8,.3); }
-    .sev-LOW      { background:rgba(59,130,246,.1);  color:#60a5fa; border-color:rgba(59,130,246,.3); }
+    .sev { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid; font-weight: 600; white-space: nowrap; }
+    .sev-CRITICAL { background:rgba(239,68,68,.1);  color:#f87171; border-color:rgba(239,68,68,.3); }
+    .sev-HIGH     { background:rgba(249,115,22,.1); color:#fb923c; border-color:rgba(249,115,22,.3); }
+    .sev-MEDIUM   { background:rgba(234,179,8,.1);  color:#facc15; border-color:rgba(234,179,8,.3); }
+    .sev-LOW      { background:rgba(59,130,246,.1); color:#60a5fa; border-color:rgba(59,130,246,.3); }
 
-    .snippet {
-      background: var(--bg); border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 3px; padding: 6px 8px; font-size: 11px; color: var(--muted);
-      margin-top: 8px; overflow: auto; white-space: pre-wrap; word-break: break-all;
-      max-height: 120px; line-height: 1.6;
-    }
+    .snippet { background: var(--bg); border: 1px solid rgba(255,255,255,0.06); border-radius: 3px; padding: 6px 8px; font-size: 11px; color: var(--muted); margin-top: 8px; overflow: auto; white-space: pre-wrap; word-break: break-all; max-height: 120px; line-height: 1.6; }
 
     /* Pagination */
     .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; padding-top: 10px; }
     .page-info { font-size: 11px; color: var(--muted); }
 
     /* Skeleton */
-    .skeleton {
-      background: linear-gradient(90deg,#1a1a1a 25%,#222 50%,#1a1a1a 75%);
-      background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 3px;
-    }
+    .skeleton { background: linear-gradient(90deg,#1a1a1a 25%,#222 50%,#1a1a1a 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 3px; }
     @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
     /* Empty */
@@ -241,37 +215,64 @@
 
     /* ── History ── */
     .history-wrap { max-width: 800px; margin: 0 auto; padding: 1.5rem 1rem; }
-    .history-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-    .history-title { font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px; }
-    .history-cnt {
-      font-size: 10px; color: var(--muted); background: rgba(255,255,255,0.06);
-      padding: 1px 6px; border-radius: 3px;
-    }
-    .h-entry {
-      background: var(--card); border: 1px solid var(--border); border-radius: 4px;
-      padding: 8px 10px; margin-bottom: 5px; display: flex; align-items: center; gap: 8px;
-      transition: border-color 0.15s;
-    }
+    .page-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .page-title { font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px; }
+    .cnt-badge { font-size: 10px; color: var(--muted); background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 3px; }
+    .h-entry { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; transition: border-color 0.15s; }
     .h-entry:hover { border-color: rgba(0,255,127,0.2); }
     .h-query { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .h-sub { display: flex; gap: 10px; margin-top: 2px; }
     .h-sub-item { font-size: 10px; color: var(--muted); }
-    .rerun-btn {
-      font: inherit; font-size: 11px; cursor: pointer; background: transparent; border: none;
-      color: var(--primary); opacity: 0; transition: opacity 0.15s, background 0.15s;
-      padding: 2px 6px; border-radius: 3px; white-space: nowrap; flex-shrink: 0;
-    }
+    .rerun-btn { font: inherit; font-size: 11px; cursor: pointer; background: transparent; border: none; color: var(--primary); opacity: 0; transition: opacity 0.15s, background 0.15s; padding: 2px 6px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
     .h-entry:hover .rerun-btn { opacity: 1; }
     .rerun-btn:hover { background: rgba(0,255,127,0.1); }
     .h-limit { font-size: 10px; color: var(--muted); opacity: 0.5; padding: 4px 2px; }
 
+    /* ── Auto-Scan View ── */
+    .as-wrap { max-width: 900px; margin: 0 auto; padding: 1.5rem 1rem; }
+
+    /* Stats row */
+    .as-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 640px) { .as-stats { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 12px; }
+    .stat-val { font-size: 22px; font-weight: bold; color: var(--primary); line-height: 1; }
+    .stat-label { font-size: 10px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.08em; }
+
+    /* Control card */
+    .as-ctrl { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .as-ctrl-info { flex: 1; min-width: 0; }
+    .as-ctrl-title { font-size: 12px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .as-status-pill { font-size: 10px; padding: 1px 7px; border-radius: 9999px; font-weight: 600; }
+    .as-status-pill.on  { background: var(--primary-dim); color: var(--primary); border: 1px solid var(--primary-border); }
+    .as-status-pill.off { background: rgba(113,113,122,0.1); color: var(--muted); border: 1px solid var(--border); }
+    .as-ctrl-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .as-ctrl-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+    /* Queries list */
+    .as-queries-card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 12px; margin-bottom: 12px; }
+    .as-queries-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+    .as-queries-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+    .q-pill { font-size: 10px; padding: 2px 8px; border-radius: 3px; background: var(--primary-dim); color: var(--primary); border: 1px solid var(--primary-border); }
+
+    /* Findings */
+    .as-find-card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 10px; margin-bottom: 6px; transition: border-color 0.15s; }
+    .as-find-card:hover { border-color: rgba(0,255,127,0.25); }
+    .as-find-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .as-find-links { flex: 1; min-width: 0; }
+    .as-find-repo { font-size: 11px; color: var(--muted); text-decoration: none; }
+    .as-find-repo:hover { color: var(--primary); }
+    .as-find-file { font-size: 11px; color: var(--primary); text-decoration: none; }
+    .as-find-file:hover { text-decoration: underline; }
+    .as-find-meta { display: flex; gap: 10px; margin-top: 3px; flex-wrap: wrap; }
+    .as-find-meta-item { font-size: 10px; color: var(--muted); }
+    .as-find-query { font-size: 10px; color: var(--muted); font-style: italic; }
+
+    /* Pulse animation for running */
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .pulse { animation: pulse 1.4s infinite; }
+
     /* ── Toast ── */
-    #toast {
-      position: fixed; bottom: 20px; right: 20px; z-index: 9999;
-      background: var(--card); border: 1px solid var(--border-h); border-radius: 6px;
-      padding: 8px 14px; font-size: 12px; color: var(--text);
-      opacity: 0; transform: translateY(6px); transition: all 0.22s; pointer-events: none;
-    }
+    #toast { position: fixed; bottom: 20px; right: 20px; z-index: 9999; background: var(--card); border: 1px solid var(--border-h); border-radius: 6px; padding: 8px 14px; font-size: 12px; color: var(--text); opacity: 0; transform: translateY(6px); transition: all 0.22s; pointer-events: none; }
     #toast.show { opacity: 1; transform: translateY(0); }
 
     /* ── Responsive ── */
@@ -290,16 +291,15 @@
       <span class="badge">v2.0</span>
     </div>
     <nav>
-      <button class="nav-btn active" id="nav-search" onclick="showView('search')">Search</button>
-      <button class="nav-btn"        id="nav-history" onclick="showView('history')">History</button>
+      <button class="nav-btn active" id="nav-search"   onclick="showView('search')">Search</button>
+      <button class="nav-btn"        id="nav-autoscan" onclick="showView('autoscan')">Auto-Scan</button>
+      <button class="nav-btn"        id="nav-history"  onclick="showView('history')">History</button>
     </nav>
   </div>
 </header>
 
 <!-- Search View -->
 <div id="view-search" class="layout">
-
-  <!-- Sidebar -->
   <aside>
     <div class="sticky">
       <!-- Status -->
@@ -316,6 +316,24 @@
           </div>
           <button class="tg-btn" id="btn-tg-test" onclick="testTelegram()" title="Test Telegram" style="display:none">📤</button>
         </div>
+
+        <!-- Rate limit bar -->
+        <div class="rl-bar-wrap" id="rl-wrap" style="display:none">
+          <div class="rl-label-row">
+            <span class="rl-label">Search API</span>
+            <span class="rl-val" id="rl-val">—</span>
+          </div>
+          <div class="rl-track"><div class="rl-fill" id="rl-fill" style="width:100%;background:var(--primary)"></div></div>
+        </div>
+
+        <!-- Auto-scan mini status -->
+        <div class="as-mini">
+          <div class="as-mini-row">
+            <span class="as-mini-label">Auto-Scan</span>
+            <button class="as-toggle" id="sidebar-as-toggle" onclick="toggleAutoScan()">—</button>
+          </div>
+          <div class="as-countdown" id="sidebar-as-countdown"></div>
+        </div>
       </div>
 
       <!-- Dork Library -->
@@ -324,7 +342,6 @@
     </div>
   </aside>
 
-  <!-- Main -->
   <main>
     <div id="banner-no-token" class="banner banner-warn" style="display:none">
       <span class="banner-icon">⚠</span>
@@ -334,18 +351,13 @@
       </div>
     </div>
 
-    <!-- Search Card -->
     <div class="card search-card">
       <div class="search-row">
         <input class="input" id="q-input" type="text" placeholder='filename:.env "PRIVATE_KEY"' autocomplete="off" spellcheck="false">
         <button class="btn btn-primary" id="btn-search" onclick="doSearch()">🔍 Search</button>
       </div>
       <input class="input" id="scope-input" type="text" placeholder="Scope: username atau org GitHub (opsional)" autocomplete="off">
-
-      <!-- Mobile pills -->
       <div class="mobile-pills" id="mobile-pills"></div>
-
-      <!-- Query preview -->
       <div class="query-preview" id="q-preview" style="display:none">
         <span class="preview-zap">⚡</span>
         <span class="preview-text" id="q-preview-text"></span>
@@ -353,21 +365,69 @@
       </div>
     </div>
 
-    <!-- Dynamic content -->
     <div id="content"></div>
   </main>
+</div>
+
+<!-- Auto-Scan View -->
+<div id="view-autoscan" style="display:none">
+  <div class="as-wrap">
+    <!-- Stats -->
+    <div class="as-stats">
+      <div class="stat-card">
+        <div class="stat-val" id="as-stat-scans">0</div>
+        <div class="stat-label">Total Scan</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="as-stat-new">0</div>
+        <div class="stat-label">Temuan Baru</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="as-stat-queries">0</div>
+        <div class="stat-label">Queries</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="as-stat-interval">1j</div>
+        <div class="stat-label">Interval</div>
+      </div>
+    </div>
+
+    <!-- Control card -->
+    <div class="as-ctrl">
+      <div class="as-ctrl-info">
+        <div class="as-ctrl-title">
+          Auto-Scan
+          <span class="as-status-pill off" id="as-pill">OFF</span>
+          <span class="pulse" id="as-running-dot" style="display:none;color:var(--primary)">⬤ Berjalan…</span>
+        </div>
+        <div class="as-ctrl-sub" id="as-ctrl-sub">Memuat status…</div>
+      </div>
+      <div class="as-ctrl-actions">
+        <button class="btn btn-outline" id="btn-run-now" onclick="runNow()">▶ Scan Sekarang</button>
+        <button class="btn btn-primary" id="btn-toggle-as" onclick="toggleAutoScan()">—</button>
+      </div>
+    </div>
+
+    <!-- Query list -->
+    <div class="as-queries-card">
+      <div class="as-queries-title">Dork Queries yang Dimonitor</div>
+      <div class="as-queries-grid" id="as-queries-list"></div>
+    </div>
+
+    <!-- Recent findings -->
+    <div class="page-head" style="margin-top:16px">
+      <div class="page-title">🔎 Temuan Terbaru <span class="cnt-badge" id="as-find-cnt"></span></div>
+    </div>
+    <div id="as-findings-list"></div>
+  </div>
 </div>
 
 <!-- History View -->
 <div id="view-history" style="display:none">
   <div class="history-wrap">
-    <div class="history-head">
-      <div class="history-title">
-        <span>⏳</span> Search History
-        <span class="history-cnt" id="h-cnt"></span>
-      </div>
-      <button class="btn btn-outline" id="btn-clear" onclick="clearHistory()"
-        style="font-size:11px;color:#ef4444;border-color:rgba(239,68,68,0.2)">🗑 Clear All</button>
+    <div class="page-head">
+      <div class="page-title">⏳ Search History <span class="cnt-badge" id="h-cnt"></span></div>
+      <button class="btn btn-danger" id="btn-clear" onclick="clearHistory()" style="font-size:11px">🗑 Clear All</button>
     </div>
     <div id="h-list"></div>
   </div>
@@ -376,70 +436,52 @@
 <div id="toast"></div>
 
 <script>
-/* ── Dork Library Data ─────────────────────────────────────────────────────── */
+/* ── Dork Library ─────────────────────────────────────────────────────────── */
 const DORKS = [
-  {
-    cat: 'Wallet & Seed Phrases', icon: '👛', color: '#facc15',
-    queries: [
-      { label: 'mnemonic .env',          q: 'filename:.env "MNEMONIC"' },
-      { label: 'PRIVATE_KEY .env',       q: 'filename:.env "PRIVATE_KEY"' },
-      { label: 'wallet.json keystore',   q: 'filename:wallet.json "crypto" "ciphertext"' },
-      { label: 'seed phrase JS',         q: '"bip39" "mnemonic" "entropy"' },
-      { label: 'recovery.txt',           q: 'filename:recovery.txt "phrase"' },
-      { label: 'mnemonic.json',          q: 'filename:mnemonic.json' },
-      { label: 'Trust Wallet mnemonic',  q: '"trustwallet" "mnemonic" extension:json' },
-    ]
-  },
-  {
-    cat: 'Exchange API Keys', icon: '🔑', color: '#f87171',
-    queries: [
-      { label: 'Binance API key',  q: 'filename:.env "BINANCE_API_KEY"' },
-      { label: 'Coinbase API key', q: 'filename:.env "COINBASE_API_KEY"' },
-      { label: 'Kraken key',       q: 'filename:.env "KRAKEN_API_KEY"' },
-      { label: 'OKX API key',      q: 'filename:.env "OKX_API_KEY"' },
-      { label: 'KuCoin key',       q: 'filename:.env "KUCOIN_KEY"' },
-      { label: 'Bybit API key',    q: 'filename:.env "BYBIT_API_KEY"' },
-      { label: 'Bitget API key',   q: 'filename:.env "BITGET_API_KEY"' },
-    ]
-  },
-  {
-    cat: 'Smart Contract & DeFi', icon: '📄', color: '#22d3ee',
-    queries: [
-      { label: 'Hardhat private key',  q: 'filename:hardhat.config.js "PRIVATE_KEY"' },
-      { label: 'Hardhat TS mnemonic',  q: 'filename:hardhat.config.ts "mnemonic"' },
-      { label: 'Truffle mnemonic',     q: 'filename:truffle-config.js "mnemonic"' },
-      { label: 'Foundry private_key',  q: 'filename:foundry.toml "private_key"' },
-      { label: 'deployer key',         q: '"DEPLOYER_PRIVATE_KEY" filename:.env' },
-      { label: 'ethers.js privateKey', q: 'language:javascript "ethers" "privateKey"' },
-    ]
-  },
-  {
-    cat: 'RPC & Node Credentials', icon: '🖥', color: '#60a5fa',
-    queries: [
-      { label: 'Infura Project ID', q: 'filename:.env "INFURA_PROJECT_ID"' },
-      { label: 'Alchemy API key',   q: 'filename:.env "ALCHEMY_API_KEY"' },
-      { label: 'QuickNode token',   q: 'filename:.env "QUICKNODE_TOKEN"' },
-      { label: 'Moralis API key',   q: 'filename:.env "MORALIS_API_KEY"' },
-      { label: 'RPC URL + auth',    q: 'extension:env "RPC_URL" "SECRET"' },
-    ]
-  },
-  {
-    cat: 'NFT & Platform Keys', icon: '🛡', color: '#c084fc',
-    queries: [
-      { label: 'OpenSea API key', q: 'filename:.env "OPENSEA_API_KEY"' },
-      { label: 'Pinata IPFS key', q: 'filename:.env "PINATA_API_KEY" "PINATA_SECRET"' },
-      { label: 'NFT Storage key', q: 'filename:.env "NFT_STORAGE_API_KEY"' },
-    ]
-  },
-  {
-    cat: 'Keystore & Backup Files', icon: '🗝', color: '#fb923c',
-    queries: [
-      { label: 'Ethereum keystore',   q: 'filename:keystore.json "version" "crypto" "ciphertext"' },
-      { label: 'UTC-- keystore',      q: 'filename:UTC-- "ciphertext"' },
-      { label: 'Private Keys (raw)',  q: '"BEGIN RSA PRIVATE KEY"' },
-      { label: 'OpenSSH Private Key', q: '"BEGIN OPENSSH PRIVATE KEY"' },
-    ]
-  },
+  { cat:'Wallet & Seed Phrases', icon:'👛', color:'#facc15', queries:[
+    { label:'mnemonic .env',          q:'filename:.env "MNEMONIC"' },
+    { label:'PRIVATE_KEY .env',       q:'filename:.env "PRIVATE_KEY"' },
+    { label:'wallet.json keystore',   q:'filename:wallet.json "crypto" "ciphertext"' },
+    { label:'seed phrase JS',         q:'"bip39" "mnemonic" "entropy"' },
+    { label:'recovery.txt',           q:'filename:recovery.txt "phrase"' },
+    { label:'mnemonic.json',          q:'filename:mnemonic.json' },
+    { label:'Trust Wallet mnemonic',  q:'"trustwallet" "mnemonic" extension:json' },
+  ]},
+  { cat:'Exchange API Keys', icon:'🔑', color:'#f87171', queries:[
+    { label:'Binance API key',  q:'filename:.env "BINANCE_API_KEY"' },
+    { label:'Coinbase API key', q:'filename:.env "COINBASE_API_KEY"' },
+    { label:'Kraken key',       q:'filename:.env "KRAKEN_API_KEY"' },
+    { label:'OKX API key',      q:'filename:.env "OKX_API_KEY"' },
+    { label:'KuCoin key',       q:'filename:.env "KUCOIN_KEY"' },
+    { label:'Bybit API key',    q:'filename:.env "BYBIT_API_KEY"' },
+    { label:'Bitget API key',   q:'filename:.env "BITGET_API_KEY"' },
+  ]},
+  { cat:'Smart Contract & DeFi', icon:'📄', color:'#22d3ee', queries:[
+    { label:'Hardhat private key',  q:'filename:hardhat.config.js "PRIVATE_KEY"' },
+    { label:'Hardhat TS mnemonic',  q:'filename:hardhat.config.ts "mnemonic"' },
+    { label:'Truffle mnemonic',     q:'filename:truffle-config.js "mnemonic"' },
+    { label:'Foundry private_key',  q:'filename:foundry.toml "private_key"' },
+    { label:'deployer key',         q:'"DEPLOYER_PRIVATE_KEY" filename:.env' },
+    { label:'ethers.js privateKey', q:'language:javascript "ethers" "privateKey"' },
+  ]},
+  { cat:'RPC & Node Credentials', icon:'🖥', color:'#60a5fa', queries:[
+    { label:'Infura Project ID', q:'filename:.env "INFURA_PROJECT_ID"' },
+    { label:'Alchemy API key',   q:'filename:.env "ALCHEMY_API_KEY"' },
+    { label:'QuickNode token',   q:'filename:.env "QUICKNODE_TOKEN"' },
+    { label:'Moralis API key',   q:'filename:.env "MORALIS_API_KEY"' },
+    { label:'RPC URL + auth',    q:'extension:env "RPC_URL" "SECRET"' },
+  ]},
+  { cat:'NFT & Platform Keys', icon:'🛡', color:'#c084fc', queries:[
+    { label:'OpenSea API key',  q:'filename:.env "OPENSEA_API_KEY"' },
+    { label:'Pinata IPFS key',  q:'filename:.env "PINATA_API_KEY" "PINATA_SECRET"' },
+    { label:'NFT Storage key',  q:'filename:.env "NFT_STORAGE_API_KEY"' },
+  ]},
+  { cat:'Keystore & Backup Files', icon:'🗝', color:'#fb923c', queries:[
+    { label:'Ethereum keystore',    q:'filename:keystore.json "version" "crypto" "ciphertext"' },
+    { label:'UTC-- keystore',       q:'filename:UTC-- "ciphertext"' },
+    { label:'Private Keys (raw)',   q:'"BEGIN RSA PRIVATE KEY"' },
+    { label:'OpenSSH Private Key',  q:'"BEGIN OPENSSH PRIVATE KEY"' },
+  ]},
 ];
 
 /* ── State ──────────────────────────────────────────────────────────────────── */
@@ -449,362 +491,298 @@ const S = {
   page: 1,
   loading: false,
   config: null,
+  autoScan: null,
   openCats: new Set(),
 };
 
-/* ── Severity ───────────────────────────────────────────────────────────────── */
+/* ── Severity (client-side fallback) ────────────────────────────────────────── */
 function severity(path, snippet) {
   const t = (path + ' ' + snippet).toLowerCase();
-  if (t.includes('private_key') || t.includes('privatekey') || t.includes('mnemonic') ||
-      t.includes('seed phrase')  || t.includes('keystore')   || t.includes('ciphertext') ||
-      t.includes('begin rsa')    || t.includes('begin openssh') || t.includes('id_rsa') ||
-      t.includes('recovery phrase')) return 'CRITICAL';
-  if (t.includes('secret')   || t.includes('api_secret') || t.includes('password') ||
-      t.includes('jwt_secret')|| t.includes('sk_live') ||
-      (t.includes('api_key') && t.includes('binance')) ||
-      t.includes('kraken')    || t.includes('coinbase')) return 'HIGH';
-  if (t.includes('api_key')  || t.includes('token')    || t.includes('infura') ||
-      t.includes('alchemy')   || t.includes('rpc_url')  || t.includes('stripe') ||
-      t.includes('moralis')   || t.includes('quicknode')) return 'MEDIUM';
+  if (t.includes('private_key')||t.includes('privatekey')||t.includes('mnemonic')||
+      t.includes('seed phrase')||t.includes('keystore')||t.includes('ciphertext')||
+      t.includes('begin rsa')||t.includes('begin openssh')||t.includes('id_rsa')) return 'CRITICAL';
+  if (t.includes('secret')||t.includes('password')||t.includes('sk_live')||
+      (t.includes('api_key')&&t.includes('binance'))||t.includes('kraken')||t.includes('coinbase')) return 'HIGH';
+  if (t.includes('api_key')||t.includes('token')||t.includes('infura')||t.includes('alchemy')) return 'MEDIUM';
   return 'LOW';
 }
 
-/* ── HTML helpers ───────────────────────────────────────────────────────────── */
+/* ── HTML escape ────────────────────────────────────────────────────────────── */
 function esc(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 /* ── History ────────────────────────────────────────────────────────────────── */
-function loadHist() {
-  try { return JSON.parse(localStorage.getItem('gh_dork_history') || '[]'); } catch { return []; }
+function loadHist() { try { return JSON.parse(localStorage.getItem('gh_dork_history')||'[]'); } catch { return []; } }
+function saveHist(q,count) {
+  try { const h=loadHist(); h.unshift({query:q,count,ts:Date.now()}); localStorage.setItem('gh_dork_history',JSON.stringify(h.slice(0,50))); } catch {}
 }
-function saveHist(q, count) {
-  try {
-    const h = loadHist();
-    h.unshift({ query: q, count, ts: Date.now() });
-    localStorage.setItem('gh_dork_history', JSON.stringify(h.slice(0, 50)));
-  } catch {}
-}
-function clearHistory() {
-  localStorage.removeItem('gh_dork_history');
-  renderHistory();
-  toast('Search history cleared.');
-}
+function clearHistory() { localStorage.removeItem('gh_dork_history'); renderHistory(); toast('Search history cleared.'); }
 
 /* ── Toast ──────────────────────────────────────────────────────────────────── */
-let _toastT;
-function toast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg; el.classList.add('show');
-  clearTimeout(_toastT);
-  _toastT = setTimeout(() => el.classList.remove('show'), 2600);
-}
+let _tt;
+function toast(msg) { const e=document.getElementById('toast'); e.textContent=msg; e.classList.add('show'); clearTimeout(_tt); _tt=setTimeout(()=>e.classList.remove('show'),2600); }
 
-/* ── API calls ──────────────────────────────────────────────────────────────── */
+/* ── API ────────────────────────────────────────────────────────────────────── */
 async function fetchConfig() {
+  try { const r=await fetch('/api/github/config'); S.config=await r.json(); updateStatus(); } catch {}
+}
+async function fetchRateLimit() {
   try {
-    const r = await fetch('/api/github/config');
-    S.config = await r.json();
-    updateStatus();
+    const r=await fetch('/api/github/rate-limit');
+    if(!r.ok) return;
+    const d=await r.json();
+    const search=d?.resources?.search;
+    if(!search) return;
+    const {remaining,limit,reset}=search;
+    const pct=Math.max(0,Math.min(100,(remaining/limit)*100));
+    const fillColor=pct>50?'var(--primary)':pct>20?'var(--yellow)':'var(--red)';
+    const resetTime=new Date(reset*1000).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('rl-wrap').style.display='block';
+    document.getElementById('rl-val').textContent=`${remaining}/${limit}`;
+    document.getElementById('rl-fill').style.width=pct+'%';
+    document.getElementById('rl-fill').style.background=fillColor;
+    document.getElementById('rl-val').title=`Reset: ${resetTime}`;
   } catch {}
 }
-
-async function testTelegram() {
+async function fetchAutoScanStatus() {
   try {
-    const r = await fetch('/api/github/notify-test', { method: 'POST' });
-    const d = await r.json();
-    toast(d.ok ? 'Notifikasi test dikirim ke Telegram! ✓' : (d.error || 'Gagal kirim notifikasi.'));
-  } catch { toast('Gagal menghubungi server.'); }
+    const r=await fetch('/api/autoscan/status');
+    if(!r.ok) return;
+    S.autoScan=await r.json();
+    updateAutoScanSidebar();
+    if(S.view==='autoscan') renderAutoScan();
+  } catch {}
+}
+async function testTelegram() {
+  try { const r=await fetch('/api/github/notify-test',{method:'POST'}); const d=await r.json(); toast(d.ok?'Notifikasi test dikirim ke Telegram! ✓':(d.error||'Gagal kirim notifikasi.')); } catch { toast('Gagal menghubungi server.'); }
+}
+async function toggleAutoScan() {
+  try {
+    const r=await fetch('/api/autoscan/toggle',{method:'POST'});
+    const d=await r.json();
+    await fetchAutoScanStatus();
+    toast(d.enabled?'Auto-scan diaktifkan ✓':'Auto-scan dihentikan.');
+  } catch { toast('Gagal mengubah status auto-scan.'); }
+}
+async function runNow() {
+  const btn=document.getElementById('btn-run-now');
+  btn.disabled=true; btn.textContent='⏳ Memulai…';
+  try {
+    const r=await fetch('/api/autoscan/run-now',{method:'POST'});
+    const d=await r.json();
+    toast(d.ok?'Auto-scan dimulai! Cek Telegram untuk hasilnya.':(d.error||d.message||'Gagal.'));
+    if(d.ok) setTimeout(()=>fetchAutoScanStatus(),3000);
+  } catch { toast('Gagal memulai scan.'); }
+  setTimeout(()=>{ btn.disabled=false; btn.innerHTML='▶ Scan Sekarang'; },3000);
 }
 
 /* ── Status UI ──────────────────────────────────────────────────────────────── */
 function updateStatus() {
-  const cfg = S.config;
-  if (!cfg) return;
-  const tokOk = (cfg.tokensConfigured || 0) > 0;
-  const tgOk  = !!cfg.telegramConfigured;
+  const cfg=S.config; if(!cfg) return;
+  const tokOk=(cfg.tokensConfigured||0)>0;
+  const tgOk=!!cfg.telegramConfigured;
+  const $=id=>document.getElementById(id);
+  $('dot-token').className='dot '+(tokOk?'dot-ok':'dot-warn');
+  $('txt-token').textContent=tokOk?`${cfg.tokensConfigured} token aktif`:'Token belum diset';
+  $('dot-tg').className='dot '+(tgOk?'dot-ok':'dot-warn');
+  $('txt-tg').textContent=tgOk?'Telegram aktif':'Telegram belum diset';
+  $('btn-tg-test').style.display=tgOk?'inline-block':'none';
+  $('banner-no-token').style.display=tokOk?'none':'flex';
+  $('btn-search').disabled=!tokOk;
+}
 
-  const el = (id) => document.getElementById(id);
-  el('dot-token').className = 'dot ' + (tokOk ? 'dot-ok' : 'dot-warn');
-  el('txt-token').textContent = tokOk ? `${cfg.tokensConfigured} token aktif` : 'Token belum diset';
-  el('dot-tg').className = 'dot ' + (tgOk ? 'dot-ok' : 'dot-warn');
-  el('txt-tg').textContent = tgOk ? 'Telegram aktif' : 'Telegram belum diset';
-  el('btn-tg-test').style.display = tgOk ? 'inline-block' : 'none';
-  el('banner-no-token').style.display = tokOk ? 'none' : 'flex';
-  el('btn-search').disabled = !tokOk;
+function updateAutoScanSidebar() {
+  const as=S.autoScan; if(!as) return;
+  const toggle=document.getElementById('sidebar-as-toggle');
+  const countdown=document.getElementById('sidebar-as-countdown');
+  toggle.className='as-toggle'+(as.enabled?' on':'');
+  toggle.textContent=as.enabled?'ON':'OFF';
+  if(as.enabled&&as.nextScan) {
+    const diff=Math.max(0,as.nextScan-Date.now());
+    const mins=Math.floor(diff/60000);
+    const secs=Math.floor((diff%60000)/1000);
+    const status=as.running?'⬤ Berjalan…':`Next: ${mins}m ${secs}s`;
+    countdown.textContent=status;
+    countdown.style.color=as.running?'var(--primary)':'';
+  } else {
+    countdown.textContent=as.enabled?'Menunggu…':'Tidak aktif';
+  }
 }
 
 /* ── Dork Library ───────────────────────────────────────────────────────────── */
 function renderDorkLib() {
-  const lib = document.getElementById('dork-lib');
-  const pills = document.getElementById('mobile-pills');
-
-  lib.innerHTML = DORKS.map((cat, ci) => {
-    const open = S.openCats.has(ci);
-    const dorkItems = cat.queries.map((d, di) =>
-      `<button class="dork-item" data-ci="${ci}" data-di="${di}">${esc(d.label)}</button>`
-    ).join('');
-    return `
-      <div>
-        <button class="cat-btn" data-ci="${ci}">
-          <span style="font-size:12px;color:${cat.color};flex-shrink:0">${cat.icon}</span>
-          <span class="cat-name">${esc(cat.cat)}</span>
-          <span class="chevron${open ? ' open' : ''}">›</span>
-        </button>
-        <div class="dork-list${open ? ' open' : ''}" id="dl-${ci}">${dorkItems}</div>
-      </div>`;
+  const lib=document.getElementById('dork-lib');
+  const pills=document.getElementById('mobile-pills');
+  lib.innerHTML=DORKS.map((cat,ci)=>{
+    const open=S.openCats.has(ci);
+    const items=cat.queries.map((d,di)=>`<button class="dork-item" data-ci="${ci}" data-di="${di}">${esc(d.label)}</button>`).join('');
+    return `<div><button class="cat-btn" data-ci="${ci}"><span style="font-size:12px;color:${cat.color};flex-shrink:0">${cat.icon}</span><span class="cat-name">${esc(cat.cat)}</span><span class="chevron${open?' open':''}">›</span></button><div class="dork-list${open?' open':''}" id="dl-${ci}">${items}</div></div>`;
   }).join('');
-
-  // Mobile pills: first 2 per category
-  pills.innerHTML = DORKS.flatMap((cat, ci) =>
-    cat.queries.slice(0, 2).map((d, di) =>
-      `<button class="pill" data-ci="${ci}" data-di="${di}">${esc(d.label)}</button>`
-    )
-  ).join('');
-
-  // Attach events via delegation
-  lib.addEventListener('click', e => {
-    const catBtn = e.target.closest('.cat-btn');
-    if (catBtn) { toggleCat(+catBtn.dataset.ci); return; }
-    const dorkBtn = e.target.closest('.dork-item');
-    if (dorkBtn) pickDork(+dorkBtn.dataset.ci, +dorkBtn.dataset.di);
+  pills.innerHTML=DORKS.flatMap((cat,ci)=>cat.queries.slice(0,2).map((d,di)=>`<button class="pill" data-ci="${ci}" data-di="${di}">${esc(d.label)}</button>`)).join('');
+  lib.addEventListener('click',e=>{
+    const cb=e.target.closest('.cat-btn'); if(cb){toggleCat(+cb.dataset.ci);return;}
+    const db=e.target.closest('.dork-item'); if(db) pickDork(+db.dataset.ci,+db.dataset.di);
   });
-  pills.addEventListener('click', e => {
-    const pill = e.target.closest('.pill');
-    if (pill) pickDork(+pill.dataset.ci, +pill.dataset.di);
-  });
+  pills.addEventListener('click',e=>{ const p=e.target.closest('.pill'); if(p) pickDork(+p.dataset.ci,+p.dataset.di); });
 }
-
 function toggleCat(ci) {
-  if (S.openCats.has(ci)) S.openCats.delete(ci);
-  else S.openCats.add(ci);
-  const list = document.getElementById(`dl-${ci}`);
-  if (list) list.className = 'dork-list' + (S.openCats.has(ci) ? ' open' : '');
-  const btn = document.querySelector(`.cat-btn[data-ci="${ci}"] .chevron`);
-  if (btn) btn.className = 'chevron' + (S.openCats.has(ci) ? ' open' : '');
+  S.openCats.has(ci)?S.openCats.delete(ci):S.openCats.add(ci);
+  const list=document.getElementById(`dl-${ci}`);
+  if(list) list.className='dork-list'+(S.openCats.has(ci)?' open':'');
+  const chev=document.querySelector(`.cat-btn[data-ci="${ci}"] .chevron`);
+  if(chev) chev.className='chevron'+(S.openCats.has(ci)?' open':'');
 }
-
-function pickDork(ci, di) {
-  const q = DORKS[ci].queries[di].q;
-  document.getElementById('q-input').value = q;
-  S.activeQuery = q;
-  runSearch();
-}
+function pickDork(ci,di) { const q=DORKS[ci].queries[di].q; document.getElementById('q-input').value=q; S.activeQuery=q; runSearch(); }
 
 /* ── Search ─────────────────────────────────────────────────────────────────── */
 function doSearch() {
-  const q = document.getElementById('q-input').value.trim();
-  if (!q) return;
-  const scope = document.getElementById('scope-input').value.trim();
-  S.activeQuery = scope ? `${q} user:${scope}` : q;
-  S.page = 1;
-  runSearch();
+  const q=document.getElementById('q-input').value.trim(); if(!q) return;
+  const scope=document.getElementById('scope-input').value.trim();
+  S.activeQuery=scope?`${q} user:${scope}`:q; S.page=1; runSearch();
 }
-
 async function runSearch() {
-  if (!S.activeQuery) return;
-
-  // Show query preview
-  document.getElementById('q-preview').style.display = 'flex';
-  document.getElementById('q-preview-text').textContent = S.activeQuery;
-  document.getElementById('btn-copy-q').onclick = () => copyText(S.activeQuery);
-
-  S.loading = true;
-  renderContent(null, null, true);
-
+  if(!S.activeQuery) return;
+  document.getElementById('q-preview').style.display='flex';
+  document.getElementById('q-preview-text').textContent=S.activeQuery;
+  document.getElementById('btn-copy-q').onclick=()=>copyText(S.activeQuery);
+  S.loading=true; renderContent(null,null,true);
   try {
-    const url = `/api/github/search?q=${encodeURIComponent(S.activeQuery)}&per_page=30&page=${S.page}`;
-    const r = await fetch(url);
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || `Server error: ${r.status}`);
-    saveHist(S.activeQuery, data.total_count);
-    renderContent(data, null, false);
-  } catch (e) {
-    renderContent(null, e.message, false);
-  } finally {
-    S.loading = false;
-  }
+    const r=await fetch(`/api/github/search?q=${encodeURIComponent(S.activeQuery)}&per_page=30&page=${S.page}`);
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.error||`Server error: ${r.status}`);
+    saveHist(S.activeQuery,data.total_count);
+    renderContent(data,null,false);
+  } catch(e) { renderContent(null,e.message,false); }
+  finally { S.loading=false; }
 }
+function changePage(d) { S.page=Math.max(1,S.page+d); window.scrollTo({top:0,behavior:'smooth'}); runSearch(); }
 
-/* ── Render Content ─────────────────────────────────────────────────────────── */
-function renderContent(data, error, loading) {
-  const area = document.getElementById('content');
-
-  if (loading) {
-    area.innerHTML = [0,1,2,3,4].map(() => `
-      <div class="card" style="padding:10px;margin-bottom:6px">
-        <div class="skeleton" style="height:12px;width:38%;margin-bottom:8px"></div>
-        <div class="skeleton" style="height:11px;width:62%;margin-bottom:8px"></div>
-        <div class="skeleton" style="height:56px;width:100%"></div>
-      </div>`).join('');
-    return;
-  }
-
-  if (error) {
-    area.innerHTML = `
-      <div class="banner banner-err">
-        <span class="banner-icon">⚠</span>
-        <div>
-          <div class="banner-title">Pencarian Gagal</div>
-          <div class="banner-sub">${esc(error)}</div>
-        </div>
-      </div>`;
-    return;
-  }
-
-  if (!data) { area.innerHTML = ''; return; }
-
-  const totalPages = Math.ceil(Math.min(data.total_count, 1000) / 30);
-  const tgOk = S.config && S.config.telegramConfigured;
-  let html = '';
-
-  // Meta row
-  html += `
-    <div class="results-meta">
-      <span><span class="count-hi">${data.total_count.toLocaleString()}</span> hasil ditemukan${data.total_count > 1000 ? '<span style="font-size:10px;margin-left:4px">(maks. 1000 diakses)</span>' : ''}</span>
-      <span>Hal. ${S.page} / ${totalPages || 1}</span>
-    </div>`;
-
-  if (data.total_count > 0 && tgOk)
-    html += `<div class="info-bar info-tg">📤 Notifikasi CRITICAL/HIGH otomatis dikirim ke Telegram</div>`;
-  if (data.total_count > 0)
-    html += `<div class="info-bar info-warn">ℹ GitHub membatasi pencarian kode 30 hasil per halaman.</div>`;
-
-  if (data.items.length === 0) {
-    html += `<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil ditemukan</div><div class="empty-sub">Coba query berbeda atau hapus filter scope</div></div>`;
+/* ── Render Search Content ──────────────────────────────────────────────────── */
+function renderContent(data,error,loading) {
+  const area=document.getElementById('content');
+  if(loading) { area.innerHTML=[0,1,2,3,4].map(()=>`<div class="card" style="padding:10px;margin-bottom:6px"><div class="skeleton" style="height:12px;width:38%;margin-bottom:8px"></div><div class="skeleton" style="height:11px;width:62%;margin-bottom:8px"></div><div class="skeleton" style="height:56px;width:100%"></div></div>`).join(''); return; }
+  if(error) { area.innerHTML=`<div class="banner banner-err"><span class="banner-icon">⚠</span><div><div class="banner-title">Pencarian Gagal</div><div class="banner-sub">${esc(error)}</div></div></div>`; return; }
+  if(!data) { area.innerHTML=''; return; }
+  const totalPages=Math.ceil(Math.min(data.total_count,1000)/30);
+  const tgOk=S.config&&S.config.telegramConfigured;
+  let html=`<div class="results-meta"><span><span class="count-hi">${data.total_count.toLocaleString()}</span> hasil ditemukan${data.total_count>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>Hal. ${S.page} / ${totalPages||1}</span></div>`;
+  if(data.total_count>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Notifikasi CRITICAL/HIGH otomatis dikirim ke Telegram</div>`;
+  if(data.total_count>0) html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman.</div>`;
+  if(data.items.length===0) {
+    html+=`<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil</div><div class="empty-sub">Coba query berbeda atau hapus filter scope</div></div>`;
   } else {
-    data.items.forEach(item => {
-      const snippet = item.snippet || (item.text_matches && item.text_matches[0] && item.text_matches[0].fragment) || '';
-      const sev = item.severity || severity(item.path, snippet);
-      const updatedAt = new Date(item.repository.updated_at).toLocaleDateString('id-ID');
-      html += `
-        <div class="result-card">
-          <div class="result-top">
-            <div class="result-links">
-              <div>
-                <a href="${esc(item.repository.html_url)}" target="_blank" rel="noopener" class="result-repo">${esc(item.repository.full_name)}</a>
-                <span class="sep">/</span>
-                <a href="${esc(item.html_url)}" target="_blank" rel="noopener" class="result-file">${esc(item.path)} ↗</a>
-              </div>
-              <div class="result-meta-row">
-                <span class="meta-item">⭐ ${item.repository.stargazers_count.toLocaleString()}</span>
-                <span class="meta-item">🕐 ${updatedAt}</span>
-              </div>
-            </div>
-            <div class="result-actions">
-              <span class="sev sev-${esc(sev)}">${esc(sev)}</span>
-              <button class="copy-btn" data-copy="${esc(item.html_url)}" title="Salin URL">⎘</button>
-            </div>
-          </div>
-          ${snippet ? `<pre class="snippet">${esc(snippet)}</pre>` : ''}
-        </div>`;
+    data.items.forEach(item=>{
+      const snippet=item.snippet||(item.text_matches&&item.text_matches[0]&&item.text_matches[0].fragment)||'';
+      const sev=item.severity||severity(item.path,snippet);
+      const upd=new Date(item.repository.updated_at).toLocaleDateString('id-ID');
+      html+=`<div class="result-card"><div class="result-top"><div class="result-links"><div><a href="${esc(item.repository.html_url)}" target="_blank" rel="noopener" class="result-repo">${esc(item.repository.full_name)}</a><span class="sep">/</span><a href="${esc(item.html_url)}" target="_blank" rel="noopener" class="result-file">${esc(item.path)} ↗</a></div><div class="result-meta-row"><span class="meta-item">⭐ ${item.repository.stargazers_count.toLocaleString()}</span><span class="meta-item">🕐 ${upd}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="copy-btn" data-copy="${esc(item.html_url)}" title="Salin URL">⎘</button></div></div>${snippet?`<pre class="snippet">${esc(snippet)}</pre>`:''}</div>`;
     });
-
-    if (totalPages > 1) {
-      html += `
-        <div class="pagination">
-          <button class="btn btn-outline" onclick="changePage(-1)" ${S.page <= 1 ? 'disabled' : ''}>← Prev</button>
-          <span class="page-info">Hal. ${S.page} / ${totalPages}</span>
-          <button class="btn btn-outline" onclick="changePage(1)" ${S.page >= totalPages ? 'disabled' : ''}>Next →</button>
-        </div>`;
-    }
+    if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
   }
-
-  area.innerHTML = html;
-
-  // Attach copy handlers via delegation
-  area.querySelectorAll('[data-copy]').forEach(btn => {
-    btn.addEventListener('click', () => copyText(btn.dataset.copy));
-  });
+  area.innerHTML=html;
+  area.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>copyText(b.dataset.copy)));
 }
 
-function changePage(delta) {
-  S.page = Math.max(1, S.page + delta);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  runSearch();
+/* ── Auto-Scan View ─────────────────────────────────────────────────────────── */
+function renderAutoScan() {
+  const as=S.autoScan;
+  if(!as) { return; }
+
+  // Stats
+  document.getElementById('as-stat-scans').textContent=as.scanCount||0;
+  document.getElementById('as-stat-new').textContent=as.totalNewFindings||0;
+  document.getElementById('as-stat-queries').textContent=as.queriesCount||0;
+  document.getElementById('as-stat-interval').textContent='1j';
+
+  // Pill & running dot
+  const pill=document.getElementById('as-pill');
+  pill.textContent=as.enabled?'ON':'OFF';
+  pill.className='as-status-pill '+(as.enabled?'on':'off');
+  document.getElementById('as-running-dot').style.display=as.running?'inline':'none';
+
+  // Toggle button
+  const btn=document.getElementById('btn-toggle-as');
+  btn.textContent=as.enabled?'⏹ Stop':'▶ Aktifkan';
+  btn.className='btn '+(as.enabled?'btn-danger':'btn-primary');
+
+  // Sub text
+  let sub='';
+  if(as.running) sub='<span style="color:var(--primary)">⬤ Scan sedang berjalan…</span>';
+  else if(as.enabled&&as.nextScan) {
+    const diff=Math.max(0,as.nextScan-Date.now());
+    const mins=Math.floor(diff/60000);
+    const secs=Math.floor((diff%60000)/1000);
+    sub=`Next scan: <b>${mins}m ${secs}s</b>`;
+    if(as.lastScan) sub+=` &nbsp;·&nbsp; Terakhir: ${new Date(as.lastScan).toLocaleTimeString('id-ID')}`;
+  } else if(as.lastScan) {
+    sub=`Terakhir scan: ${new Date(as.lastScan).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}`;
+  } else { sub='Belum pernah scan.'; }
+  document.getElementById('as-ctrl-sub').innerHTML=sub;
+
+  // Queries pills
+  document.getElementById('as-queries-list').innerHTML=(as.queries||[]).map(q=>`<span class="q-pill">${esc(q)}</span>`).join('');
+
+  // Findings
+  const findings=as.recentFindings||[];
+  document.getElementById('as-find-cnt').textContent=findings.length||'';
+  const list=document.getElementById('as-findings-list');
+  if(findings.length===0) {
+    list.innerHTML=`<div class="card empty"><div class="empty-icon">🤖</div><div class="empty-title">Belum ada temuan dari auto-scan</div><div class="empty-sub">${as.enabled?'Temuan baru akan muncul di sini setelah scan berjalan.':'Aktifkan auto-scan untuk mulai monitoring.'}</div></div>`;
+    return;
+  }
+  list.innerHTML=findings.map(f=>{
+    const d=new Date(f.ts).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+    return `<div class="as-find-card"><div class="as-find-top"><div class="as-find-links"><div><a href="#" class="as-find-repo">${esc(f.repo)}</a><span class="sep">/</span><a href="${esc(f.fileUrl)}" target="_blank" rel="noopener" class="as-find-file">${esc(f.path)} ↗</a></div><div class="as-find-meta"><span class="as-find-meta-item">🕐 ${d}</span><span class="as-find-query">🏷 ${esc(f.queryLabel)}</span></div></div><div class="result-actions"><span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><button class="copy-btn" data-copy="${esc(f.fileUrl)}" title="Salin URL">⎘</button></div></div></div>`;
+  }).join('');
+  list.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>copyText(b.dataset.copy)));
 }
 
 /* ── History View ───────────────────────────────────────────────────────────── */
 function renderHistory() {
-  const entries = loadHist();
-  document.getElementById('h-cnt').textContent = entries.length ? entries.length : '';
-  document.getElementById('btn-clear').style.display = entries.length ? 'inline-flex' : 'none';
-
-  function rel(ts) {
-    const d = Date.now() - ts;
-    const m = Math.floor(d/60000), h = Math.floor(d/3600000), day = Math.floor(d/86400000);
-    if (day > 0) return `${day}d ago`;
-    if (h   > 0) return `${h}h ago`;
-    if (m   > 0) return `${m}m ago`;
-    return 'just now';
-  }
-
-  const list = document.getElementById('h-list');
-  if (entries.length === 0) {
-    list.innerHTML = `
-      <div class="card empty">
-        <div class="empty-icon">⏳</div>
-        <div class="empty-title">No search history yet</div>
-        <div class="empty-sub">Searches will appear here automatically</div>
-        <button class="btn btn-outline" onclick="showView('search')" style="margin-top:12px;font-size:11px">🔍 Start Searching</button>
-      </div>`;
+  const entries=loadHist();
+  document.getElementById('h-cnt').textContent=entries.length||'';
+  document.getElementById('btn-clear').style.display=entries.length?'inline-flex':'none';
+  function rel(ts){ const d=Date.now()-ts,m=Math.floor(d/60000),h=Math.floor(d/3600000),day=Math.floor(d/86400000); if(day>0)return`${day}d ago`;if(h>0)return`${h}h ago`;if(m>0)return`${m}m ago`;return'just now'; }
+  const list=document.getElementById('h-list');
+  if(entries.length===0){
+    list.innerHTML=`<div class="card empty"><div class="empty-icon">⏳</div><div class="empty-title">No search history yet</div><div class="empty-sub">Searches will appear here automatically</div><button class="btn btn-outline" onclick="showView('search')" style="margin-top:12px;font-size:11px">🔍 Start Searching</button></div>`;
     return;
   }
-
-  list.innerHTML = entries.map((e, i) => `
-    <div class="h-entry">
-      <span style="color:var(--muted);flex-shrink:0;font-size:12px">🔍</span>
-      <div style="flex:1;min-width:0">
-        <div class="h-query" title="${esc(e.query)}">${esc(e.query)}</div>
-        <div class="h-sub">
-          <span class="h-sub-item">🕐 ${rel(e.ts)}</span>
-          <span class="h-sub-item">≡ ${e.count.toLocaleString()} results</span>
-        </div>
-      </div>
-      <button class="rerun-btn" data-q="${esc(e.query)}">Re-run →</button>
-    </div>
-  `).join('') + `<div class="h-limit">⚠ History disimpan di browser. Maks. 50 pencarian.</div>`;
-
-  list.querySelectorAll('.rerun-btn').forEach(btn => {
-    btn.addEventListener('click', () => rerun(btn.dataset.q));
-  });
+  list.innerHTML=entries.map(e=>`<div class="h-entry"><span style="color:var(--muted);flex-shrink:0">🔍</span><div style="flex:1;min-width:0"><div class="h-query" title="${esc(e.query)}">${esc(e.query)}</div><div class="h-sub"><span class="h-sub-item">🕐 ${rel(e.ts)}</span><span class="h-sub-item">≡ ${e.count.toLocaleString()} results</span></div></div><button class="rerun-btn" data-q="${esc(e.query)}">Re-run →</button></div>`).join('')+`<div class="h-limit">⚠ History disimpan di browser. Maks. 50 pencarian.</div>`;
+  list.querySelectorAll('.rerun-btn').forEach(b=>b.addEventListener('click',()=>rerun(b.dataset.q)));
 }
-
-function rerun(q) {
-  document.getElementById('q-input').value = q;
-  S.activeQuery = q;
-  S.page = 1;
-  showView('search');
-  runSearch();
-}
+function rerun(q) { document.getElementById('q-input').value=q; S.activeQuery=q; S.page=1; showView('search'); runSearch(); }
 
 /* ── Views ──────────────────────────────────────────────────────────────────── */
 function showView(v) {
-  S.view = v;
-  document.getElementById('view-search').style.display  = v === 'search'  ? 'flex' : 'none';
-  document.getElementById('view-history').style.display = v === 'history' ? 'block' : 'none';
-  document.getElementById('nav-search').className  = 'nav-btn' + (v === 'search'  ? ' active' : '');
-  document.getElementById('nav-history').className = 'nav-btn' + (v === 'history' ? ' active' : '');
-  if (v === 'history') renderHistory();
+  S.view=v;
+  ['search','autoscan','history'].forEach(n=>{
+    document.getElementById(`view-${n}`).style.display=(v===n?(n==='search'?'flex':'block'):'none');
+    document.getElementById(`nav-${n}`).className='nav-btn'+(v===n?' active':'');
+  });
+  if(v==='history') renderHistory();
+  if(v==='autoscan') { fetchAutoScanStatus(); }
 }
 
 /* ── Copy ───────────────────────────────────────────────────────────────────── */
-function copyText(t) {
-  navigator.clipboard.writeText(t).then(() => toast('Disalin ke clipboard.')).catch(() => {});
-}
+function copyText(t) { navigator.clipboard.writeText(t).then(()=>toast('Disalin ke clipboard.')).catch(()=>{}); }
 
 /* ── Init ───────────────────────────────────────────────────────────────────── */
 (function init() {
-  // Keyboard shortcut: Enter to search
-  document.getElementById('q-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doSearch();
-  });
-
+  document.getElementById('q-input').addEventListener('keydown',e=>{ if(e.key==='Enter') doSearch(); });
   renderDorkLib();
   fetchConfig();
+  fetchRateLimit();
+  fetchAutoScanStatus();
+
+  // Refresh config every 30s, rate limit every 5m, auto-scan every 15s
   setInterval(fetchConfig, 30000);
+  setInterval(fetchRateLimit, 5*60*1000);
+  setInterval(()=>{ fetchAutoScanStatus(); updateAutoScanSidebar(); }, 15000);
+
+  // Countdown ticker every second
+  setInterval(()=>{ if(S.autoScan) { updateAutoScanSidebar(); if(S.view==='autoscan') { const sub=document.getElementById('as-ctrl-sub'); if(sub&&S.autoScan.enabled&&S.autoScan.nextScan&&!S.autoScan.running){ const diff=Math.max(0,S.autoScan.nextScan-Date.now()); const mins=Math.floor(diff/60000); const secs=Math.floor((diff%60000)/1000); sub.innerHTML=`Next scan: <b>${mins}m ${secs}s</b>`+(S.autoScan.lastScan?` &nbsp;·&nbsp; Terakhir: ${new Date(S.autoScan.lastScan).toLocaleTimeString('id-ID')}`:''); } } } }, 1000);
 })();
 </script>
 </body>
