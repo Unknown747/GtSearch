@@ -160,39 +160,129 @@ function escHtml(s: string): string {
 }
 
 // ── Severity classifier ───────────────────────────────────────────────────────
-// Regex patterns that indicate a real secret value (not just a keyword)
+// Regex patterns that confirm an actual crypto/blockchain secret value is present
 const CRITICAL_REGEXES: RegExp[] = [
-  /AKIA[0-9A-Z]{16}/,                         // AWS Access Key ID
-  /0x[0-9a-fA-F]{64}/,                        // Ethereum private key (0x-prefixed)
-  /\b[0-9a-fA-F]{64}\b/,                      // Raw 32-byte hex key (ETH/BTC)
-  /ghp_[A-Za-z0-9]{36}/,                      // GitHub PAT (classic)
-  /github_pat_[A-Za-z0-9_]{82}/,              // GitHub PAT (fine-grained)
-  /[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/,        // Bitcoin WIF private key
+  /AKIA[0-9A-Z]{16}/,                              // AWS Access Key ID
+  /0x[0-9a-fA-F]{64}/,                             // Ethereum/EVM private key (0x-prefixed)
+  /\b[0-9a-fA-F]{64}\b/,                           // Raw 32-byte hex key (ETH/BTC/BSC/AVAX/MATIC/TRX)
+  /ghp_[A-Za-z0-9]{36}/,                           // GitHub PAT (classic)
+  /github_pat_[A-Za-z0-9_]{82}/,                   // GitHub PAT (fine-grained)
+  /[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/,             // Bitcoin WIF private key (compressed/uncompressed)
+  /ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}/,          // NEAR Protocol private key
+  /xprv[A-Za-z0-9]{107}/,                          // BIP32 extended private key (xprv)
+  /zprv[A-Za-z0-9]{107}/,                          // BIP84 extended private key (zprv)
+  /\b[1-9A-HJ-NP-Za-km-z]{87,88}\b/,              // Solana keypair (base58, 64 bytes)
 ];
 
 function severity(filePath: string, snippet: string): "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" {
   const raw = filePath + " " + snippet;
   const t = raw.toLowerCase();
-  // Regex check first — confirms an actual secret value is present
+
+  // ── CRITICAL: regex confirms actual key value present ──────────────────────
   for (const re of CRITICAL_REGEXES) { if (re.test(raw)) return "CRITICAL"; }
+
+  // ── CRITICAL: keywords strongly indicating a plaintext crypto secret ───────
   if (
+    // Generic key/seed terms
     t.includes("private_key") || t.includes("privatekey") ||
-    t.includes("mnemonic") || t.includes("seed phrase") ||
+    t.includes("mnemonic") || t.includes("seed phrase") || t.includes("seed_phrase") ||
+    t.includes("seedphrase") || t.includes("secret_recovery_phrase") ||
+    t.includes("recovery phrase") || t.includes("recovery_phrase") ||
+    t.includes("wallet_mnemonic") || t.includes("wallet_seed") ||
+    t.includes("wallet_private") || t.includes("wallet_secret") ||
     t.includes("keystore") || t.includes("ciphertext") ||
     t.includes("begin rsa") || t.includes("begin openssh") || t.includes("id_rsa") ||
-    t.includes("recovery phrase")
+    // Ethereum / EVM
+    t.includes("eth_private") || t.includes("ethereum_private") ||
+    t.includes("evm_private") || t.includes("deployer_key") ||
+    t.includes("deployer_private") || t.includes("signer_private") ||
+    // Bitcoin
+    t.includes("btc_private") || t.includes("bitcoin_private") ||
+    t.includes("btc_wif") || t.includes("bitcoin_wif") ||
+    t.includes("xprivkey") || t.includes("master_private") ||
+    // Solana
+    t.includes("sol_private") || t.includes("solana_private") ||
+    t.includes("solana_secret") || t.includes("sol_secret") ||
+    t.includes("phantom_private") || t.includes("phantom_secret") ||
+    t.includes("solana_keypair") || t.includes("sol_keypair") ||
+    // NEAR Protocol
+    t.includes("near_private_key") || t.includes("near_secret") ||
+    // Tron / TRX
+    t.includes("tron_private") || t.includes("trx_private") ||
+    t.includes("tron_key") || t.includes("trx_key") ||
+    // Avalanche / AVAX
+    t.includes("avax_private") || t.includes("avalanche_private") ||
+    // Polygon / MATIC
+    t.includes("matic_private") || t.includes("polygon_private") ||
+    // BSC / BNB
+    t.includes("bsc_private") || t.includes("bnb_private") ||
+    // Cosmos / Terra
+    t.includes("cosmos_mnemonic") || t.includes("terra_mnemonic") ||
+    t.includes("cosmos_key") || t.includes("terra_key") ||
+    // Polkadot / Substrate
+    t.includes("dot_mnemonic") || t.includes("polkadot_mnemonic") ||
+    t.includes("substrate_seed") ||
+    // Wallet files
+    t.includes("keypair.json") || t.includes("wallet.dat") ||
+    t.includes("utc--")
   ) return "CRITICAL";
+
+  // ── HIGH: exchange API secrets & trading credentials ───────────────────────
   if (
     t.includes("secret") || t.includes("api_secret") ||
-    t.includes("password") || t.includes("jwt_secret") ||
-    t.includes("sk_live") || (t.includes("api_key") && t.includes("binance")) ||
-    t.includes("kraken") || t.includes("coinbase")
+    t.includes("password") || t.includes("jwt_secret") || t.includes("sk_live") ||
+    // Tier-1 Exchanges
+    (t.includes("api_key") && t.includes("binance")) ||
+    t.includes("kraken") || t.includes("coinbase") ||
+    t.includes("bybit") || t.includes("okx") || t.includes("okex") ||
+    t.includes("kucoin") || t.includes("huobi") || t.includes("htx") ||
+    // Tier-2 Exchanges
+    t.includes("gateio") || t.includes("gate_io") ||
+    t.includes("bitget") || t.includes("mexc") || t.includes("bitmart") ||
+    t.includes("bitmex") || t.includes("deribit") || t.includes("phemex") ||
+    t.includes("poloniex") || t.includes("whitebit") || t.includes("lbank") ||
+    t.includes("ascendex") || t.includes("bitrue") || t.includes("probit") ||
+    t.includes("bitkub") || t.includes("coindcx") || t.includes("wazirx") ||
+    t.includes("zebpay") || t.includes("bitbns") ||
+    // Indonesian & SEA Exchanges
+    t.includes("indodax") || t.includes("tokocrypto") || t.includes("pintu") ||
+    t.includes("rekeningku") || t.includes("nanovest") ||
+    // Legacy / defunct
+    t.includes("ftx") || t.includes("bitfinex") || t.includes("bitstamp") ||
+    t.includes("gemini") || t.includes("cryptocom") || t.includes("crypto_com") ||
+    // DeFi protocols with API/admin keys
+    t.includes("flashbots") || t.includes("relayer_key") || t.includes("operator_key")
   ) return "HIGH";
+
+  // ── MEDIUM: RPC endpoints, node infra, block explorers ────────────────────
   if (
-    t.includes("api_key") || t.includes("token") || t.includes("infura") ||
-    t.includes("alchemy") || t.includes("rpc_url") || t.includes("stripe") ||
-    t.includes("moralis") || t.includes("quicknode")
+    t.includes("api_key") || t.includes("rpc_url") ||
+    // EVM RPC Providers
+    t.includes("infura") || t.includes("alchemy") || t.includes("quicknode") ||
+    t.includes("moralis") || t.includes("ankr") || t.includes("chainstack") ||
+    t.includes("blastapi") || t.includes("getblock") || t.includes("nownodes") ||
+    t.includes("drpc") || t.includes("lavanetwork") || t.includes("chainbase") ||
+    t.includes("blocknative") || t.includes("pokt") ||
+    // Solana RPC Providers
+    t.includes("helius") || t.includes("triton") || t.includes("shyft") ||
+    // Block Explorers (API keys)
+    t.includes("etherscan") || t.includes("bscscan") || t.includes("polygonscan") ||
+    t.includes("snowtrace") || t.includes("arbiscan") || t.includes("optimistic") ||
+    t.includes("basescan") || t.includes("solscan") || t.includes("tronscan") ||
+    t.includes("nearblocks") || t.includes("celoscan") || t.includes("ftmscan") ||
+    // Indexing / Data
+    t.includes("thegraph") || t.includes("the_graph") || t.includes("subgraph") ||
+    t.includes("covalent") || t.includes("transpose") || t.includes("bitquery") ||
+    // NFT / IPFS
+    t.includes("pinata") || t.includes("nftstorage") || t.includes("web3storage") ||
+    t.includes("infura") || t.includes("filebase") ||
+    // Wallet / Auth
+    t.includes("walletconnect") || t.includes("web3auth") || t.includes("privy") ||
+    t.includes("dynamic_xyz") || t.includes("particle_network") ||
+    // Token
+    t.includes("token")
   ) return "MEDIUM";
+
   return "LOW";
 }
 
@@ -268,41 +358,91 @@ function queryDelayMs(): number {
 
 const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   // ── Seed phrases & mnemonics ─────────────────────────────────────────────
-  { label: "mnemonic .env",            q: 'filename:.env "MNEMONIC"' },
-  { label: "PRIVATE_KEY .env",         q: 'filename:.env "PRIVATE_KEY"' },
-  { label: "Trust Wallet mnemonic",    q: '"trustwallet" "mnemonic" extension:json' },
-  { label: "MetaMask seed words",      q: '"metamask" "seed" "words" extension:json' },
-  { label: "seed phrase JS",           q: '"bip39" "mnemonic" "entropy" language:javascript' },
+  { label: "mnemonic .env",              q: 'filename:.env "MNEMONIC"' },
+  { label: "PRIVATE_KEY .env",           q: 'filename:.env "PRIVATE_KEY"' },
+  { label: "seed phrase .env",           q: 'filename:.env "SEED_PHRASE" OR "SECRET_RECOVERY_PHRASE"' },
+  { label: "Trust Wallet mnemonic",      q: '"trustwallet" "mnemonic" extension:json' },
+  { label: "MetaMask seed words",        q: '"metamask" "seed" "words" extension:json' },
+  { label: "seed phrase JS",             q: '"bip39" "mnemonic" "entropy" language:javascript' },
+  { label: ".env.production key",        q: 'filename:.env.production "PRIVATE_KEY" OR "MNEMONIC"' },
+  { label: ".env.local key",             q: 'filename:.env.local "PRIVATE_KEY" OR "MNEMONIC"' },
+
+  // ── EVM Chains (ETH / BSC / AVAX / MATIC / ARB / OP) ────────────────────
+  { label: "ETH private key .env",       q: 'filename:.env "ETH_PRIVATE_KEY" OR "ETHEREUM_PRIVATE_KEY"' },
+  { label: "BSC private key",            q: 'filename:.env "BSC_PRIVATE_KEY" OR "BNB_PRIVATE_KEY"' },
+  { label: "AVAX private key",           q: 'filename:.env "AVAX_PRIVATE_KEY" OR "AVALANCHE_PRIVATE_KEY"' },
+  { label: "MATIC private key",          q: 'filename:.env "MATIC_PRIVATE_KEY" OR "POLYGON_PRIVATE_KEY"' },
+  { label: "deployer key",               q: '"DEPLOYER_PRIVATE_KEY" filename:.env' },
+  { label: "signer private key",         q: 'filename:.env "SIGNER_PRIVATE_KEY" OR "OPERATOR_PRIVATE_KEY"' },
+
+  // ── Solana ────────────────────────────────────────────────────────────────
+  { label: "Solana private key",         q: 'filename:.env "SOLANA_PRIVATE_KEY" OR "SOL_PRIVATE_KEY"' },
+  { label: "Phantom wallet key",         q: 'filename:.env "PHANTOM_PRIVATE_KEY"' },
+  { label: "Solana keypair.json",        q: 'filename:keypair.json extension:json language:json "[" NOT "test"' },
+  { label: "Anchor wallet keypair",      q: 'filename:id.json path:.config/solana "[1," OR "[2,"' },
+
+  // ── NEAR Protocol ─────────────────────────────────────────────────────────
+  { label: "NEAR private key",           q: 'filename:.env "NEAR_PRIVATE_KEY" OR "NEAR_SECRET"' },
+  { label: "NEAR credentials file",      q: 'filename:credentials.json "ed25519:" path:.near' },
+
+  // ── Tron / TRX ───────────────────────────────────────────────────────────
+  { label: "Tron private key",           q: 'filename:.env "TRON_PRIVATE_KEY" OR "TRX_PRIVATE_KEY"' },
+  { label: "Tron key JS",                q: 'language:javascript "TronWeb" "privateKey"' },
+
+  // ── Cosmos / Terra / Polkadot ─────────────────────────────────────────────
+  { label: "Cosmos mnemonic",            q: 'filename:.env "COSMOS_MNEMONIC" OR "TERRA_MNEMONIC"' },
+  { label: "Polkadot seed",              q: 'filename:.env "DOT_MNEMONIC" OR "POLKADOT_MNEMONIC" OR "SUBSTRATE_SEED"' },
 
   // ── Wallet files ─────────────────────────────────────────────────────────
-  { label: "wallet.json",              q: 'filename:wallet.json "crypto" "ciphertext"' },
-  { label: "Ethereum wallet",          q: 'filename:keystore.json "version" "crypto" "ciphertext"' },
-  { label: "UTC-- wallet",             q: 'filename:UTC-- "ciphertext"' },
-  { label: "MetaMask vault",           q: 'filename:vault.json "data" "iv" "salt"' },
-  { label: "Phantom wallet key",       q: 'filename:.env "PHANTOM_PRIVATE_KEY"' },
-  { label: "Solana keypair",           q: 'filename:keypair.json extension:json language:json "[" NOT "test"' },
-  { label: "Exodus wallet backup",     q: 'filename:exodus.wallet.bak OR filename:exodus-backup' },
+  { label: "Ethereum keystore.json",     q: 'filename:keystore.json "version" "crypto" "ciphertext"' },
+  { label: "UTC-- wallet file",          q: 'filename:UTC-- "ciphertext"' },
+  { label: "wallet.json ciphertext",     q: 'filename:wallet.json "crypto" "ciphertext"' },
+  { label: "MetaMask vault",             q: 'filename:vault.json "data" "iv" "salt"' },
+  { label: "Exodus wallet backup",       q: 'filename:exodus.wallet.bak OR filename:exodus-backup' },
+  { label: "BIP32 xprv key",            q: '"xprv" extension:json OR extension:txt OR extension:env' },
 
-  // ── Exchange API keys ─────────────────────────────────────────────────────
-  { label: "Binance API key",          q: 'filename:.env "BINANCE_API_KEY"' },
-  { label: "Coinbase API key",         q: 'filename:.env "COINBASE_API_KEY"' },
-  { label: "Kraken key",               q: 'filename:.env "KRAKEN_API_KEY"' },
+  // ── Exchange API Keys ─────────────────────────────────────────────────────
+  { label: "Binance API key",            q: 'filename:.env "BINANCE_API_KEY"' },
+  { label: "Coinbase API key",           q: 'filename:.env "COINBASE_API_KEY"' },
+  { label: "Kraken API key",             q: 'filename:.env "KRAKEN_API_KEY"' },
+  { label: "Bybit API key",              q: 'filename:.env "BYBIT_API_KEY"' },
+  { label: "OKX API key",               q: 'filename:.env "OKX_API_KEY" OR "OKEX_API_KEY"' },
+  { label: "KuCoin API key",             q: 'filename:.env "KUCOIN_API_KEY" OR "KUCOIN_KEY"' },
+  { label: "Huobi / HTX API key",        q: 'filename:.env "HUOBI_API_KEY" OR "HTX_API_KEY"' },
+  { label: "Gate.io API key",            q: 'filename:.env "GATE_API_KEY" OR "GATEIO_API_KEY"' },
+  { label: "Bitget API key",             q: 'filename:.env "BITGET_API_KEY"' },
+  { label: "MEXC API key",               q: 'filename:.env "MEXC_API_KEY"' },
+  { label: "Indodax / Tokocrypto key",   q: 'filename:.env "INDODAX_API_KEY" OR "TOKOCRYPTO_API_KEY"' },
 
   // ── Smart contract / DeFi ────────────────────────────────────────────────
-  { label: "Hardhat private key",      q: 'filename:hardhat.config.js "PRIVATE_KEY"' },
-  { label: "deployer key",             q: '"DEPLOYER_PRIVATE_KEY" filename:.env' },
+  { label: "Hardhat private key JS",     q: 'filename:hardhat.config.js "PRIVATE_KEY"' },
+  { label: "Hardhat private key TS",     q: 'filename:hardhat.config.ts "PRIVATE_KEY" OR "mnemonic"' },
+  { label: "Truffle mnemonic",           q: 'filename:truffle-config.js "mnemonic"' },
+  { label: "Foundry private_key",        q: 'filename:foundry.toml "private_key"' },
+  { label: "Anchor deploy key",          q: 'filename:Anchor.toml "wallet" path:.config/solana' },
 
-  // ── Infrastructure ────────────────────────────────────────────────────────
-  { label: "OpenSSH Private Key",      q: '"BEGIN OPENSSH PRIVATE KEY"' },
-  { label: "Infura Project ID",        q: 'filename:.env "INFURA_PROJECT_ID"' },
-  { label: "Alchemy API key",          q: 'filename:.env "ALCHEMY_API_KEY"' },
-  { label: "OpenSea API key",          q: 'filename:.env "OPENSEA_API_KEY"' },
+  // ── RPC / Node Infrastructure ─────────────────────────────────────────────
+  { label: "Infura Project ID",          q: 'filename:.env "INFURA_PROJECT_ID"' },
+  { label: "Alchemy API key",            q: 'filename:.env "ALCHEMY_API_KEY"' },
+  { label: "Helius API key (Solana)",    q: 'filename:.env "HELIUS_API_KEY"' },
+  { label: "QuickNode token",            q: 'filename:.env "QUICKNODE_TOKEN" OR "QUICKNODE_API_KEY"' },
+  { label: "Moralis API key",            q: 'filename:.env "MORALIS_API_KEY"' },
+  { label: "Ankr API key",              q: 'filename:.env "ANKR_API_KEY"' },
+
+  // ── NFT & IPFS ────────────────────────────────────────────────────────────
+  { label: "Pinata IPFS key",            q: 'filename:.env "PINATA_API_KEY" "PINATA_SECRET"' },
+  { label: "NFT Storage key",            q: 'filename:.env "NFT_STORAGE_API_KEY"' },
+  { label: "OpenSea API key",            q: 'filename:.env "OPENSEA_API_KEY"' },
 
   // ── GitHub Actions / CI-CD ───────────────────────────────────────────────
-  { label: "PRIVATE_KEY in workflow",  q: 'path:.github/workflows "PRIVATE_KEY" extension:yml' },
-  { label: "MNEMONIC in workflow",     q: 'path:.github/workflows "MNEMONIC" extension:yml' },
-  { label: "BEGIN RSA in workflow",    q: 'path:.github/workflows "BEGIN RSA PRIVATE KEY"' },
-  { label: "hardcoded PAT in CI",      q: 'path:.github/workflows "ghp_" OR "github_pat_"' },
+  { label: "PRIVATE_KEY in workflow",    q: 'path:.github/workflows "PRIVATE_KEY" extension:yml' },
+  { label: "MNEMONIC in workflow",       q: 'path:.github/workflows "MNEMONIC" extension:yml' },
+  { label: "BEGIN RSA in workflow",      q: 'path:.github/workflows "BEGIN RSA PRIVATE KEY"' },
+  { label: "hardcoded PAT in CI",        q: 'path:.github/workflows "ghp_" OR "github_pat_"' },
+
+  // ── SSH Keys ──────────────────────────────────────────────────────────────
+  { label: "OpenSSH Private Key",        q: '"BEGIN OPENSSH PRIVATE KEY"' },
+  { label: "RSA Private Key",            q: '"BEGIN RSA PRIVATE KEY"' },
 ];
 
 export interface AutoScanFinding {
