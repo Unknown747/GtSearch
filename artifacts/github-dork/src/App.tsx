@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Home } from "@/pages/home";
 import { SearchHistory } from "@/pages/history";
+import { Cli } from "@/pages/cli";
 import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
 
@@ -23,6 +24,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/history" component={SearchHistory} />
+        <Route path="/cli" component={Cli} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

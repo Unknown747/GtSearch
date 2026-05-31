@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { SiGithub } from "react-icons/si";
-import { History, Search, Shield } from "lucide-react";
+import { History, Search, Shield, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface LayoutProps {
@@ -52,6 +52,19 @@ export function Layout({ children }: LayoutProps) {
             >
               <History className="w-3 h-3" />
               History
+            </Link>
+            <Link
+              href="/cli"
+              data-testid="nav-cli"
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-mono transition-colors",
+                location === "/cli"
+                  ? "bg-primary/10 text-primary border border-primary/20"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}
+            >
+              <Terminal className="w-3 h-3" />
+              CLI
             </Link>
             <a
               href="https://github.com"
