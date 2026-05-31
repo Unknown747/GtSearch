@@ -92,6 +92,25 @@ class TokenPool {
   }
 
   /**
+   * Like pick(), but excludes tokens currently in use by parallel workers.
+   */
+  pickExcluding(excluding: ReadonlySet<string>): { token: string; state: TokenState } | null {
+    this.sync();
+    if (!this.states.size) return null;
+    const now = Date.now();
+    const candidates: TokenState[] = [];
+    for (const state of this.states.values()) {
+      if (state.errors >= 3) continue;
+      if (excluding.has(state.token)) continue;
+      if (state.resetAt > 0 && now >= state.resetAt) { state.remaining = 30; state.resetAt = 0; }
+      if (state.remaining > 0) candidates.push(state);
+    }
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => b.remaining - a.remaining);
+    return { token: candidates[0].token, state: candidates[0] };
+  }
+
+  /**
    * Update a token's rate-limit state from response headers.
    * Returns the updated remaining count.
    */
@@ -583,6 +602,19 @@ const seenFindings = new Set<string>();
 let seenFindingsCreatedAt = Date.now();
 const SEEN_FINDINGS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+// ── Dedup LOW/MEDIUM (url → expiry ms, 24h TTL) ───────────────────────────────
+const seenLowMedium = new Map<string, number>();
+const SEEN_LOW_TTL_MS = 24 * 60 * 60 * 1000;
+
+// ── Per-query stats: skip-quiet + incremental window ─────────────────────────
+interface QueryStat { consecZero: number; skipUntil: number; lastHitAt: number | null; }
+const queryStats = new Map<string, QueryStat>();
+
+// ── Adaptive interval bounds ──────────────────────────────────────────────────
+const MIN_SCAN_INTERVAL_MS = 15 * 60 * 1000;
+const MAX_SCAN_INTERVAL_MS = 360 * 60 * 1000;
+let consecutiveEmptyScans = 0;
+
 function maybeClearSeenFindings(): void {
   if (Date.now() - seenFindingsCreatedAt > SEEN_FINDINGS_TTL_MS) {
     const prev = seenFindings.size;
@@ -672,6 +704,27 @@ function getAllQueries(): Array<{ label: string; q: string }> {
   return [...AUTO_SCAN_QUERIES, ...customQueries];
 }
 
+/** Priority 0 = CRITICAL (run first), 1 = HIGH, 2 = normal. */
+function queryPriority(label: string): number {
+  const lo = label.toLowerCase();
+  if (lo.includes("mnemonic") || lo.includes("seed phrase") || lo.includes("private key") ||
+      lo.includes("privatekey") || lo.includes("keystore") || lo.includes("keypair") ||
+      lo.includes("seed_phrase")) return 0;
+  if (lo.includes("api key") || lo.includes("api_key") || lo.includes("secret") ||
+      lo.includes("password") || lo.includes("token")) return 1;
+  return 2;
+}
+
+/** Per-query incremental window: scan from last hit date (min 3d, max 30d). */
+function queryWindowDays(label: string): number {
+  const stats = queryStats.get(label);
+  if (stats?.lastHitAt) {
+    const daysSince = Math.ceil((Date.now() - stats.lastHitAt) / (24 * 60 * 60 * 1000));
+    return Math.max(3, Math.min(daysSince + 1, 30));
+  }
+  return currentScanWindowDays;
+}
+
 loadCustomQueries();
 
 let scanTimer: ReturnType<typeof setInterval> | null = null;
@@ -724,178 +777,213 @@ async function runAutoScan(): Promise<void> {
   autoScanState.tokenSwitches = 0;
   autoScanState.queriesCompleted = 0;
   autoScanState.queriesSkipped = 0;
-  const scanTs = Date.now();
-  autoScanState.lastScan = scanTs;
+  autoScanState.lastScan = Date.now();
   autoScanState.scanCount++;
+
+  // ── #3 Priority queue: sort by priority (0=CRITICAL first) ───────────────
+  const allQueries = getAllQueries().sort((a, b) => queryPriority(a.label) - queryPriority(b.label));
+
+  // ── #2 Skip quiet queries: filter those with active cooldown ─────────────
+  const now = Date.now();
+  const activeQueries: Array<{ label: string; q: string }> = [];
+  let cooldownCount = 0;
+  for (const qry of allQueries) {
+    const stats = queryStats.get(qry.label);
+    if (stats && stats.skipUntil > now) {
+      autoScanState.queriesSkipped++;
+      cooldownCount++;
+    } else {
+      activeQueries.push(qry);
+    }
+  }
+
   logger.info(
-    { scanCount: autoScanState.scanCount, queries: getAllQueries().length, tokens: tokenPool.size, windowDays: currentScanWindowDays },
+    { scanCount: autoScanState.scanCount, active: activeQueries.length, cooldown: cooldownCount, tokens: tokenPool.size },
     "Auto-scan started"
   );
 
   const newFindings: AutoScanFinding[] = [];
-  let prevToken: string | null = null;
+  const queryHitsThisScan: Record<string, number> = {};
 
-  for (const { label, q } of getAllQueries()) {
-    // Polite pause between queries
-    await new Promise<void>((r) => setTimeout(r, queryDelayMs()));
+  // ── Shared query queue (JS single-threaded: index++ is atomic) ───────────
+  let queueIndex = 0;
+  const tokensInUse = new Set<string>();
 
-    // Pick the best available token (may need to wait for a rate-limit reset)
-    const available = await waitForAvailableToken();
-    if (!available) {
-      autoScanState.queriesSkipped++;
-      logger.error("Auto-scan: giving up waiting for a token — scan aborted early");
-      break;
-    }
+  interface GHItem {
+    path: string; html_url: string;
+    repository: { full_name: string };
+    text_matches?: Array<{ fragment: string }>;
+  }
 
-    const picked = tokenPool.pick();
-    if (!picked) {
-      autoScanState.queriesSkipped++;
-      continue;
-    }
+  // ── #6 seenLowMedium cleanup (probabilistic 10%) ─────────────────────────
+  if (Math.random() < 0.1) {
+    const expireNow = Date.now();
+    for (const [url, expiry] of seenLowMedium) { if (expiry < expireNow) seenLowMedium.delete(url); }
+  }
 
-    const { token, state } = picked;
+  const processPage = (items: GHItem[], label: string, q: string) => {
+    for (const item of items) {
+      if (blocklist.includes(item.repository.full_name)) continue;
 
-    // Log token switches for observability
-    if (prevToken && prevToken !== token) {
-      autoScanState.tokenSwitches++;
-      logger.info(
-        { from: `...${prevToken.slice(-4)}`, to: `...${token.slice(-4)}`, label },
-        "Auto-scan: switched token mid-scan"
-      );
-    }
-    prevToken = token;
+      const snippet = item.text_matches?.[0]?.fragment ?? "";
+      const key = findingKey(item.html_url, snippet);
+      if (seenFindings.has(key)) continue;
 
-    try {
-      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - currentScanWindowDays);
-      const rollingDate = cutoff.toISOString().slice(0, 10);
-      const url = `https://api.github.com/search/code?q=${encodeURIComponent(q + ` fork:false pushed:>${rollingDate}`)}&per_page=30&page=1&sort=indexed&order=desc`;
-      const headers: Record<string, string> = {
-        Authorization: `token ${token}`,
-        Accept: "application/vnd.github.text-match+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "GH-Dork/2.0",
-      };
+      // ── #6 Dedup LOW/MEDIUM by URL (24h TTL) — skip severity() call ──────
+      const lowExpiry = seenLowMedium.get(item.html_url);
+      if (lowExpiry && lowExpiry > Date.now()) continue;
 
-      const r = await fetch(url, { headers });
-
-      // Update this token's rate-limit state from response headers
-      const remaining = parseInt(r.headers.get("x-ratelimit-remaining") ?? "-1", 10);
-      const resetEpoch = r.headers.get("x-ratelimit-reset");
-      const resetSec = resetEpoch ? parseInt(resetEpoch, 10) : null;
-
-      if (remaining >= 0) {
-        tokenPool.update(token, remaining, resetSec);
-        if (remaining < 5) {
-          logger.warn(
-            { remaining, token: `...${token.slice(-4)}`, label },
-            "Auto-scan: token nearly exhausted"
-          );
-        }
-      }
-
-      if (r.status === 401 || r.status === 403) {
-        tokenPool.flagError(token);
-        // Force remaining to 0 so this token isn't picked next
-        tokenPool.update(token, 0, resetSec);
-        logger.warn({ status: r.status, token: `...${token.slice(-4)}`, label }, "Auto-scan: token rejected, flagged");
-        autoScanState.queriesSkipped++;
+      const sev = severity(item.path, snippet);
+      if (sev !== "CRITICAL" && sev !== "HIGH") {
+        seenLowMedium.set(item.html_url, Date.now() + SEEN_LOW_TTL_MS);
         continue;
       }
+      seenFindings.add(key);
 
-      if (!r.ok) {
-        logger.warn({ status: r.status, q }, "Auto-scan query non-OK, skipping");
-        autoScanState.queriesSkipped++;
-        continue;
+      if (autoScanState.strictMode) {
+        if (sev !== "CRITICAL") continue;
+        if (!CRITICAL_REGEXES.some(re => re.test(item.path + " " + snippet))) continue;
       }
 
-      interface GHItem {
-        path: string;
-        html_url: string;
-        repository: { full_name: string };
-        text_matches?: Array<{ fragment: string }>;
-      }
-      const data = (await r.json()) as { items: GHItem[] };
-
-      autoScanState.queriesCompleted++;
-      logger.info(
-        { label, results: data.items?.length ?? 0, remaining: state.remaining, token: `...${token.slice(-4)}` },
-        "Auto-scan query done"
-      );
-
-      const processPage = (items: GHItem[]) => {
-        for (const item of items) {
-          const snippet = item.text_matches?.[0]?.fragment ?? "";
-          const key = findingKey(item.html_url, snippet);
-          if (seenFindings.has(key)) continue;
-          if (blocklist.includes(item.repository.full_name)) continue;
-
-          const sev = severity(item.path, snippet);
-          // Only track CRITICAL/HIGH — LOW/MEDIUM might later contain real secrets
-          if (sev !== "CRITICAL" && sev !== "HIGH") continue;
-          seenFindings.add(key);
-
-          // Strict mode: CRITICAL-Only — skip HIGH; skip CRITICAL without regex match
-          if (autoScanState.strictMode) {
-            if (sev !== "CRITICAL") continue;
-            const hasRegex = CRITICAL_REGEXES.some(re => re.test(item.path + " " + snippet));
-            if (!hasRegex) continue;
-          }
-
-          const finding: AutoScanFinding = {
-            ts: Date.now(),
-            severity: sev,
-            repo: item.repository.full_name,
-            path: item.path,
-            fileUrl: item.html_url,
-            query: q,
-            queryLabel: label,
-          };
-          newFindings.push(finding);
-          autoScanState.recentFindings.unshift(finding);
-          autoScanState.queryHits[label] = (autoScanState.queryHits[label] ?? 0) + 1;
-        }
+      const finding: AutoScanFinding = {
+        ts: Date.now(), severity: sev,
+        repo: item.repository.full_name, path: item.path,
+        fileUrl: item.html_url, query: q, queryLabel: label,
       };
+      newFindings.push(finding);
+      autoScanState.recentFindings.unshift(finding);
+      autoScanState.queryHits[label] = (autoScanState.queryHits[label] ?? 0) + 1;
+      queryHitsThisScan[label] = (queryHitsThisScan[label] ?? 0) + 1;
+    }
+  };
 
-      processPage(data.items ?? []);
+  // ── #1 Parallel worker — each worker pulls from the shared queue ──────────
+  const runWorker = async (): Promise<void> => {
+    while (true) {
+      if (queueIndex >= activeQueries.length) break;
+      const { label, q } = activeQueries[queueIndex++];
 
-      // Page 2: if page 1 was full (30 results) and we still have token capacity
-      if ((data.items?.length ?? 0) >= 30 && state.remaining > 5) {
-        try {
-          const url2 = url.replace("page=1", "page=2");
-          const r2 = await fetch(url2, { headers });
-          const rem2 = parseInt(r2.headers.get("x-ratelimit-remaining") ?? "-1", 10);
-          const rst2 = r2.headers.get("x-ratelimit-reset");
-          if (rem2 >= 0) tokenPool.update(token, rem2, rst2 ? parseInt(rst2, 10) : null);
-          if (r2.ok) {
-            const data2 = (await r2.json()) as { items: GHItem[] };
-            processPage(data2.items ?? []);
-            logger.info({ label, p2: data2.items?.length ?? 0 }, "Auto-scan page 2 fetched");
-          }
-        } catch (p2err) {
-          logger.warn({ err: p2err, q }, "Auto-scan page 2 error (non-fatal)");
+      await new Promise<void>((r) => setTimeout(r, queryDelayMs()));
+
+      // Wait for a non-in-use token (spin 500ms; give up after 70 min)
+      const workerDeadline = Date.now() + 70 * 60 * 1000;
+      let picked: { token: string; state: TokenState } | null = null;
+      while (Date.now() < workerDeadline) {
+        if (tokenPool.pickExcluding(new Set()) === null) {
+          logger.error("Auto-scan: all tokens dead, worker aborting");
+          autoScanState.queriesSkipped++;
+          return;
         }
+        picked = tokenPool.pickExcluding(tokensInUse);
+        if (picked) break;
+        // All live tokens are in use by other workers — wait briefly
+        await new Promise<void>((r) => setTimeout(r, 500));
       }
-    } catch (err) {
-      logger.warn({ err, q }, "Auto-scan query error");
-      autoScanState.queriesSkipped++;
+      if (!picked) { autoScanState.queriesSkipped++; break; }
+
+      const { token, state } = picked;
+      tokensInUse.add(token);
+
+      try {
+        // ── #4 Incremental window: per-query date based on last hit ──────────
+        const windowDays = queryWindowDays(label);
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - windowDays);
+        const rollingDate = cutoff.toISOString().slice(0, 10);
+        const url = `https://api.github.com/search/code?q=${encodeURIComponent(q + ` fork:false pushed:>${rollingDate}`)}&per_page=30&page=1&sort=indexed&order=desc`;
+        const headers: Record<string, string> = {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.text-match+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "User-Agent": "GH-Dork/2.0",
+        };
+
+        const r = await fetch(url, { headers });
+        const remaining = parseInt(r.headers.get("x-ratelimit-remaining") ?? "-1", 10);
+        const resetSec = r.headers.get("x-ratelimit-reset") ? parseInt(r.headers.get("x-ratelimit-reset")!, 10) : null;
+        if (remaining >= 0) {
+          tokenPool.update(token, remaining, resetSec);
+          if (remaining < 5) logger.warn({ remaining, token: `...${token.slice(-4)}`, label }, "Auto-scan: token nearly exhausted");
+        }
+
+        if (r.status === 401 || r.status === 403) {
+          tokenPool.flagError(token); tokenPool.update(token, 0, resetSec);
+          logger.warn({ status: r.status, token: `...${token.slice(-4)}`, label }, "Auto-scan: token rejected");
+          autoScanState.queriesSkipped++; continue;
+        }
+        if (!r.ok) { logger.warn({ status: r.status, q }, "Auto-scan non-OK"); autoScanState.queriesSkipped++; continue; }
+
+        const data = (await r.json()) as { items: GHItem[] };
+        autoScanState.queriesCompleted++;
+        logger.info({ label, results: data.items?.length ?? 0, remaining: state.remaining, windowDays, token: `...${token.slice(-4)}` }, "Auto-scan query done");
+
+        processPage(data.items ?? [], label, q);
+
+        if ((data.items?.length ?? 0) >= 30 && state.remaining > 5) {
+          try {
+            const r2 = await fetch(url.replace("page=1", "page=2"), { headers });
+            const rem2 = parseInt(r2.headers.get("x-ratelimit-remaining") ?? "-1", 10);
+            const rst2 = r2.headers.get("x-ratelimit-reset");
+            if (rem2 >= 0) tokenPool.update(token, rem2, rst2 ? parseInt(rst2, 10) : null);
+            if (r2.ok) {
+              const data2 = (await r2.json()) as { items: GHItem[] };
+              processPage(data2.items ?? [], label, q);
+              logger.info({ label, p2: data2.items?.length ?? 0 }, "Auto-scan page 2 fetched");
+            }
+          } catch (p2err) { logger.warn({ err: p2err, q }, "Auto-scan page 2 error (non-fatal)"); }
+        }
+      } catch (err) {
+        logger.warn({ err, q }, "Auto-scan query error");
+        autoScanState.queriesSkipped++;
+      } finally {
+        tokensInUse.delete(token);
+      }
+    }
+  };
+
+  // ── #1 Launch N parallel workers (one per token, max 5) ──────────────────
+  const workerCount = Math.min(Math.max(1, tokenPool.size), 5);
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+
+  // ── #2 Update per-query stats (skip-quiet + incremental window) ───────────
+  for (const { label } of allQueries) {
+    const hits = queryHitsThisScan[label] ?? 0;
+    const prev = queryStats.get(label) ?? { consecZero: 0, skipUntil: 0, lastHitAt: null };
+    if (hits > 0) {
+      queryStats.set(label, { consecZero: 0, skipUntil: 0, lastHitAt: Date.now() });
+    } else if (activeQueries.some(a => a.label === label)) {
+      const consecZero = prev.consecZero + 1;
+      const skipUntil = consecZero >= 3 ? Date.now() + consecZero * currentScanIntervalMs : 0;
+      queryStats.set(label, { ...prev, consecZero, skipUntil });
+      if (skipUntil > 0) logger.info({ label, consecZero, skipMin: Math.round(consecZero * currentScanIntervalMs / 60000) }, "Query in cooldown");
     }
   }
 
-  // Keep only the last 100 findings in memory, then persist to disk
   autoScanState.recentFindings = autoScanState.recentFindings.slice(0, 100);
   autoScanState.totalNewFindings += newFindings.length;
   autoScanState.running = false;
-  autoScanState.nextScan = Date.now() + currentScanIntervalMs;
   saveFindings();
 
+  // ── #5 Adaptive interval ──────────────────────────────────────────────────
+  const prevIntervalMs = currentScanIntervalMs;
+  if (newFindings.length >= 5) {
+    consecutiveEmptyScans = 0;
+    currentScanIntervalMs = Math.max(MIN_SCAN_INTERVAL_MS, Math.round(currentScanIntervalMs * 0.75));
+  } else if (newFindings.length === 0) {
+    consecutiveEmptyScans++;
+    if (consecutiveEmptyScans >= 2)
+      currentScanIntervalMs = Math.min(MAX_SCAN_INTERVAL_MS, Math.round(currentScanIntervalMs * 1.5));
+  } else {
+    consecutiveEmptyScans = 0;
+  }
+  if (currentScanIntervalMs !== prevIntervalMs) {
+    logger.info({ prevMs: prevIntervalMs, newMs: currentScanIntervalMs, newFindings: newFindings.length }, "Adaptive: interval adjusted");
+    startScanTimer();
+  } else {
+    autoScanState.nextScan = Date.now() + currentScanIntervalMs;
+  }
+
   logger.info(
-    {
-      newFindings: newFindings.length,
-      totalSeen: seenFindings.size,
-      queriesCompleted: autoScanState.queriesCompleted,
-      queriesSkipped: autoScanState.queriesSkipped,
-      tokenSwitches: autoScanState.tokenSwitches,
-    },
+    { newFindings: newFindings.length, totalSeen: seenFindings.size, queriesCompleted: autoScanState.queriesCompleted, queriesSkipped: autoScanState.queriesSkipped, intervalMs: currentScanIntervalMs, workers: workerCount },
     "Auto-scan completed"
   );
 
@@ -1198,6 +1286,8 @@ router.get("/autoscan/status", (_req, res) => {
     queriesCount: getAllQueries().length,
     queries: getAllQueries().map((q) => q.label),
     intervalMs: currentScanIntervalMs,
+    consecutiveEmptyScans,
+    queriesInCooldown: [...queryStats.values()].filter(s => s.skipUntil > Date.now()).length,
     // Token rotation stats from the most recent scan
     lastScanStats: {
       queriesCompleted: autoScanState.queriesCompleted,

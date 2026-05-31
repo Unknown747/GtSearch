@@ -1379,7 +1379,15 @@ function renderAutoScan() {
   } else if(as.lastScan) {
     sub=`Terakhir scan: ${new Date(as.lastScan).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}`;
   } else { sub='Belum pernah scan.'; }
-  document.getElementById('as-ctrl-sub').innerHTML=sub;
+
+  // Optimization badges
+  const badges=[];
+  if(as.queriesInCooldown>0) badges.push(`<span style="font-size:10px;background:#3a2a00;color:#fbbf24;padding:1px 6px;border-radius:3px;font-weight:600">⏸ ${as.queriesInCooldown} query cooldown</span>`);
+  if(as.consecutiveEmptyScans>=2) badges.push(`<span style="font-size:10px;background:#1a2a3a;color:#60a5fa;padding:1px 6px;border-radius:3px;font-weight:600">📅 Adaptive: interval diperlambat</span>`);
+  if(as.lastScanStats&&as.lastScanStats.tokenSwitches>0) badges.push(`<span style="font-size:10px;background:#1a3a1a;color:#4ade80;padding:1px 6px;border-radius:3px;font-weight:600">⚡ ${Math.min(as.lastScanStats.tokenSwitches+1,5)} worker paralel</span>`);
+  const badgeHtml=badges.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${badges.join('')}</div>`:'';
+
+  document.getElementById('as-ctrl-sub').innerHTML=sub+badgeHtml;
 
   // Queries pills
   document.getElementById('as-queries-list').innerHTML=(as.queries||[]).map(q=>`<span class="q-pill">${esc(q)}</span>`).join('');

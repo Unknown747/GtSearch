@@ -1,5 +1,48 @@
 # Edit History — GH Dork
 
+## 2026-05-31 — Session 3: 11 Perubahan (#10–#20)
+
+### #15 Parallel Scan (⚡ 3–5× lebih cepat)
+- Scan sekarang menjalankan beberapa query **sekaligus** — satu worker per token, max 5 paralel
+- Implementasi: shared queue (`queueIndex++` atomic karena JS single-threaded) + `tokensInUse` Set mencegah dua worker pakai token yang sama
+- Metode `TokenPool.pickExcluding(excluding: Set)` ditambahkan untuk memilih token yang tidak sedang dipakai
+- Badge UI: `⚡ N worker paralel` muncul di sub-status Auto-Scan setelah scan selesai
+- File: `github.ts` (method `pickExcluding`, refactor `runAutoScan` jadi worker-based)
+
+### #16 Skip Query Sepi (🧠 hemat kuota)
+- Query yang menghasilkan 0 temuan selama **3 scan berturut** masuk "cooldown"
+- Durasi cooldown = `consecZero × intervalScan` (makin sering sepi → makin lama ditunda)
+- Reset otomatis ketika query kembali menghasilkan temuan
+- Status `queriesInCooldown` dipublish di `/api/autoscan/status` dan badge UI
+- File: `github.ts` (Map `queryStats`, update loop stats pasca-scan)
+
+### #17 Priority Queue (🎯 CRITICAL duluan)
+- Semua query diurutkan sebelum scan: priority 0 = mnemonic/privatekey/keystore, priority 1 = api key/secret/token, priority 2 = lainnya
+- Fungsi: `queryPriority(label)` — sorting via label keyword matching
+- File: `github.ts` (fungsi `queryPriority`, sort di awal `runAutoScan`)
+
+### #18 Incremental Window (📅 scan lebih presisi)
+- Tiap query ingat kapan terakhir ada temuan (`queryStats.lastHitAt`)
+- Window scan per query = `max(3, daysSinceLastHit + 1)` — tidak selalu 14 hari
+- Query yang belum pernah menemukan apa pun tetap pakai `currentScanWindowDays` default
+- Fungsi: `queryWindowDays(label)` di `github.ts`
+- File: `github.ts` (fungsi baru, diterapkan di setiap query dalam worker)
+
+### #19 Adaptive Interval (🔄 self-tuning)
+- Jika scan menemukan ≥5 temuan: interval dipangkas 25% (min 15 menit)
+- Jika 2 scan berturut menemukan 0: interval diperpanjang 50% (max 6 jam)
+- Timer scan di-restart otomatis ketika interval berubah
+- Badge UI: `📅 Adaptive: interval diperlambat` tampil saat consecutiveEmptyScans ≥ 2
+- File: `github.ts` (konstanta `MIN/MAX_SCAN_INTERVAL_MS`, logika di akhir `runAutoScan`)
+
+### #20 Dedup LOW/MEDIUM (🗂 kurangi CPU sia-sia)
+- Item yang sudah dievaluasi sebagai LOW/MEDIUM di-cache per URL selama **24 jam**
+- Mencegah pemanggilan `severity()` berulang untuk file yang sama setiap scan
+- Map `seenLowMedium` (url → expiry ms), cleanup probabilistik 10% di awal setiap scan
+- File: `github.ts` (Map + TTL constant `SEEN_LOW_TTL_MS`, cek di `processPage`)
+
+---
+
 ## 2026-05-31 — Session 3: 5 Perubahan (#10–#14)
 
 ### #14 Token Health Dashboard
