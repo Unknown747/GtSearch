@@ -186,8 +186,16 @@
     .sep { color: rgba(255,255,255,0.2); margin: 0 4px; }
     .result-file { font-size: 11px; color: var(--primary); text-decoration: none; }
     .result-file:hover { text-decoration: underline; }
-    .result-meta-row { display: flex; gap: 10px; margin-top: 3px; }
+    .result-meta-row { display: flex; gap: 10px; margin-top: 3px; align-items: center; }
     .meta-item { font-size: 10px; color: var(--muted); }
+    .fresh-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 10px; font-weight: 600; padding: 1px 6px;
+      border-radius: 9999px; border: 1px solid; white-space: nowrap;
+    }
+    .fresh-badge.fresh-hot  { color: #4ade80; border-color: rgba(74,222,128,0.35); background: rgba(74,222,128,0.08); }
+    .fresh-badge.fresh-warm { color: #facc15; border-color: rgba(250,204,21,0.35); background: rgba(250,204,21,0.08); }
+    .fresh-badge.fresh-cold { color: #71717a; border-color: rgba(113,113,122,0.35); background: rgba(113,113,122,0.08); }
     .result-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
     /* Severity */
@@ -907,6 +915,24 @@ function severity(path, snippet) {
   return 'LOW';
 }
 
+/* ── Freshness badge ─────────────────────────────────────────────────────────── */
+function freshBadge(dateStr) {
+  if(!dateStr) return '<span class="meta-item">📅 —</span>';
+  const days=Math.floor((Date.now()-new Date(dateStr).getTime())/86400000);
+  if(isNaN(days)||days<0) return '<span class="meta-item">📅 —</span>';
+  let label, cls, dot;
+  if(days===0)      { label='today';       cls='fresh-hot';  dot='🟢'; }
+  else if(days<=7)  { label=`${days}d ago`; cls='fresh-hot';  dot='🟢'; }
+  else if(days<=30) { label=`${days}d ago`; cls='fresh-warm'; dot='🟡'; }
+  else {
+    const weeks=Math.round(days/7);
+    const months=Math.round(days/30);
+    label = days<60 ? `${weeks}w ago` : `${months}mo ago`;
+    cls='fresh-cold'; dot='⚫';
+  }
+  return `<span class="fresh-badge ${cls}" title="Repo terakhir di-push: ${new Date(dateStr).toLocaleDateString('id-ID')}">${dot} ${label}</span>`;
+}
+
 /* ── HTML escape ────────────────────────────────────────────────────────────── */
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -1142,13 +1168,13 @@ function renderContent(data,error,loading) {
       const matches=tm?.matches||[];
       const sev=item.severity||severity(item.path||'',fragment);
       const stars=(repo.stargazers_count??0).toLocaleString();
-      const pushed=repo.pushed_at?new Date(repo.pushed_at).toLocaleDateString('id-ID'):(repo.updated_at?new Date(repo.updated_at).toLocaleDateString('id-ID'):'—');
+      const pushedDate=repo.pushed_at||repo.updated_at||'';
       const forkBadge=repo.fork?'<span class="repo-badge badge-fork">fork</span>':'';
       const archBadge=repo.archived?'<span class="repo-badge badge-arch">archived</span>':'';
       const batchLbl=item._batchLabel?`<span class="batch-lbl">${esc(item._batchLabel)}</span>`:'';
       const fileUrl=esc(item.html_url||'');
       const explorerHtml=sev==='CRITICAL'?detectExplorerLinks(item.path||'',fragment):'';
-      html+=`<div class="result-card" data-url="${fileUrl}"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${fileUrl}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a>${batchLbl}</div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span><span class="meta-item">📅 ${pushed}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="preview-btn" data-preview="${fileUrl}" data-label="${esc(item.path||'')}" title="Preview file">👁</button><button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan hasil ini">✕</button><button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button></div></div>${highlightSnippet(fragment,matches)}${explorerHtml}</div>`;
+      html+=`<div class="result-card" data-url="${fileUrl}"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${fileUrl}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a>${batchLbl}</div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span>${freshBadge(pushedDate)}</div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="preview-btn" data-preview="${fileUrl}" data-label="${esc(item.path||'')}" title="Preview file">👁</button><button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan hasil ini">✕</button><button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button></div></div>${highlightSnippet(fragment,matches)}${explorerHtml}</div>`;
     });
     if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
   }
