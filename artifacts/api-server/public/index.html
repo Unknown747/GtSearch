@@ -297,6 +297,20 @@
     #toast { position: fixed; bottom: 20px; right: 20px; z-index: 9999; background: var(--card); border: 1px solid var(--border-h); border-radius: 6px; padding: 8px 14px; font-size: 12px; color: var(--text); opacity: 0; transform: translateY(6px); transition: all 0.22s; pointer-events: none; }
     #toast.show { opacity: 1; transform: translateY(0); }
 
+    /* ── Blocklist ── */
+    .bl-card { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:12px; margin-top:12px; }
+    .bl-title { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+    .bl-list { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+    .bl-entry { display:flex; align-items:center; gap:6px; padding:4px 6px; background:rgba(239,68,68,.05); border:1px solid rgba(239,68,68,.15); border-radius:3px; }
+    .bl-repo { font-size:11px; color:var(--muted); flex:1; font-family:monospace; }
+    .bl-del { background:none; border:none; color:var(--muted); cursor:pointer; font-size:13px; padding:0 2px; flex-shrink:0; transition:color .15s; }
+    .bl-del:hover { color:var(--red); }
+    .bl-form { display:flex; gap:6px; }
+    .bl-input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:5px 8px; font:inherit; font-size:12px; color:var(--text); }
+    .bl-input:focus { border-color:var(--red); outline:none; }
+    .bl-input::placeholder { color:var(--muted); }
+    .block-btn { background:none; border:none; cursor:pointer; color:var(--muted); padding:2px 4px; font-size:12px; line-height:1; transition:color .15s; border-radius:3px; }
+    .block-btn:hover { color:var(--red); background:rgba(239,68,68,.08); }
     /* ── Responsive ── */
     @media (max-width: 880px) { aside { display: none; } }
     .mobile-pills { display: none; }
@@ -405,6 +419,14 @@
             <span class="status-text" id="txt-tg">Memuat…</span>
           </div>
           <button class="tg-btn" id="btn-tg-test" onclick="testTelegram()" title="Test Telegram" style="display:none">📤</button>
+        </div>
+        <div class="status-row">
+          <div class="dot dot-warn" id="dot-discord"></div>
+          <span class="status-text" id="txt-discord">Discord —</span>
+        </div>
+        <div class="status-row">
+          <div class="dot dot-warn" id="dot-slack"></div>
+          <span class="status-text" id="txt-slack">Slack —</span>
         </div>
 
         <!-- Rate limit bar -->
@@ -574,9 +596,23 @@
       <div id="as-leaderboard"></div>
     </div>
 
+    <!-- Blocklist -->
+    <div class="bl-card">
+      <div class="bl-title">🚫 Repo Blocklist <span class="cnt-badge" id="bl-cnt"></span></div>
+      <div class="bl-list" id="bl-list"></div>
+      <div class="bl-form">
+        <input class="bl-input" id="bl-input" placeholder="owner/repo-name" autocomplete="off" spellcheck="false">
+        <button class="btn btn-danger" style="font-size:11px;padding:5px 10px;flex-shrink:0" onclick="addToBlocklist()">+ Block</button>
+      </div>
+    </div>
+
     <!-- Recent findings -->
     <div class="page-head" style="margin-top:16px">
       <div class="page-title">🔎 Temuan Terbaru <span class="cnt-badge" id="as-find-cnt"></span></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-outline" style="font-size:10px;padding:3px 8px" onclick="exportFindings('csv')">⬇ CSV</button>
+        <button class="btn btn-outline" style="font-size:10px;padding:3px 8px" onclick="exportFindings('json')">⬇ JSON</button>
+      </div>
     </div>
     <div id="as-findings-list"></div>
   </div>
@@ -1050,12 +1086,18 @@ function updateStatus() {
   const cfg=S.config; if(!cfg) return;
   const tokOk=(cfg.tokensConfigured||0)>0;
   const tgOk=!!cfg.telegramConfigured;
+  const discOk=!!cfg.discordConfigured;
+  const slackOk=!!cfg.slackConfigured;
   const $=id=>document.getElementById(id);
   $('dot-token').className='dot '+(tokOk?'dot-ok':'dot-warn');
   $('txt-token').textContent=tokOk?`${cfg.tokensConfigured} token aktif`:'Token belum diset';
   $('dot-tg').className='dot '+(tgOk?'dot-ok':'dot-warn');
-  $('txt-tg').textContent=tgOk?'Telegram aktif':'Telegram belum diset';
+  $('txt-tg').textContent=tgOk?'Telegram aktif':'Telegram —';
   $('btn-tg-test').style.display=tgOk?'inline-block':'none';
+  $('dot-discord').className='dot '+(discOk?'dot-ok':'dot-warn');
+  $('txt-discord').textContent=discOk?'Discord aktif':'Discord —';
+  $('dot-slack').className='dot '+(slackOk?'dot-ok':'dot-warn');
+  $('txt-slack').textContent=slackOk?'Slack aktif':'Slack —';
   $('banner-no-token').style.display=tokOk?'none':'flex';
   $('btn-search').disabled=!tokOk;
 }
@@ -1279,10 +1321,11 @@ function renderAutoScan() {
   list.innerHTML=findings.map(f=>{
     const d=new Date(f.ts).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
     const fUrl=esc(f.fileUrl);
-    return `<div class="as-find-card"><div class="as-find-top"><div class="as-find-links"><div><a href="#" class="as-find-repo">${esc(f.repo)}</a><span class="sep">/</span><a href="${fUrl}" target="_blank" rel="noopener" class="as-find-file">${esc(f.path)} ↗</a></div><div class="as-find-meta"><span class="as-find-meta-item">🕐 ${d}</span><span class="as-find-query">🏷 ${esc(f.queryLabel)}</span></div></div><div class="result-actions"><span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><button class="preview-btn" data-preview="${fUrl}" data-label="${esc(f.path)}" title="Preview file">👁</button><button class="copy-btn" data-copy="${fUrl}" title="Salin URL">⎘</button></div></div></div>`;
+    return `<div class="as-find-card"><div class="as-find-top"><div class="as-find-links"><div><a href="#" class="as-find-repo">${esc(f.repo)}</a><span class="sep">/</span><a href="${fUrl}" target="_blank" rel="noopener" class="as-find-file">${esc(f.path)} ↗</a></div><div class="as-find-meta"><span class="as-find-meta-item">🕐 ${d}</span><span class="as-find-query">🏷 ${esc(f.queryLabel)}</span></div></div><div class="result-actions"><span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><button class="preview-btn" data-preview="${fUrl}" data-label="${esc(f.path)}" title="Preview file">👁</button><button class="block-btn" data-repo="${esc(f.repo)}" title="Blokir repo ini">🚫</button><button class="copy-btn" data-copy="${fUrl}" title="Salin URL">⎘</button></div></div></div>`;
   }).join('');
   list.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>copyText(b.dataset.copy)));
   list.querySelectorAll('[data-preview]').forEach(b=>b.addEventListener('click',()=>previewFile(b.dataset.preview,b.dataset.label)));
+  list.querySelectorAll('[data-repo]').forEach(b=>b.addEventListener('click',()=>blockRepoFromBtn(b.dataset.repo)));
 }
 
 /* ── History View ───────────────────────────────────────────────────────────── */
@@ -1455,6 +1498,62 @@ function runBuilderQuery(){
   panel.classList.remove('open');
   document.getElementById('btn-builder').textContent='🔧 Builder ▾';
   doSearch();
+}
+
+/* ── Export Findings ────────────────────────────────────────────────────────── */
+function exportFindings(format) {
+  const url=`/api/autoscan/export?format=${format}`;
+  const a=document.createElement('a');
+  a.href=url; a.download=''; a.click();
+  toast(`Mengunduh ${format.toUpperCase()}…`);
+}
+
+/* ── Blocklist ──────────────────────────────────────────────────────────────── */
+let _blocklist=[];
+async function fetchBlocklist(){
+  try{const r=await fetch('/api/autoscan/blocklist');const d=await r.json();_blocklist=d.blocklist||[];renderBlocklist();}catch{}
+}
+function renderBlocklist(){
+  const cnt=document.getElementById('bl-cnt');
+  if(cnt)cnt.textContent=_blocklist.length||'';
+  const list=document.getElementById('bl-list');
+  if(!list)return;
+  if(!_blocklist.length){list.innerHTML='<div style="font-size:10px;color:var(--muted);padding:2px 0">Belum ada repo yang diblokir</div>';return;}
+  list.innerHTML=_blocklist.map((r,i)=>`<div class="bl-entry"><span class="bl-repo">${esc(r)}</span><button class="bl-del" onclick="removeFromBlocklist(${i})" title="Hapus dari blocklist">×</button></div>`).join('');
+}
+async function addToBlocklist(){
+  const inp=document.getElementById('bl-input');
+  const repo=(inp.value||'').trim();
+  if(!repo){toast('Masukkan nama repo (owner/name).');return;}
+  if(!repo.includes('/')){toast('Format: owner/repo-name');return;}
+  try{
+    const r=await fetch('/api/autoscan/blocklist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({repo})});
+    const d=await r.json();
+    _blocklist=d.blocklist||[];
+    renderBlocklist();
+    inp.value='';
+    toast(`🚫 ${repo} diblokir — tidak akan muncul di hasil scan.`);
+  }catch{toast('Gagal menambahkan ke blocklist.');}
+}
+async function removeFromBlocklist(i){
+  try{
+    const r=await fetch(`/api/autoscan/blocklist/${i}`,{method:'DELETE'});
+    const d=await r.json();
+    _blocklist=d.blocklist||[];
+    renderBlocklist();
+    toast('Repo dihapus dari blocklist.');
+  }catch{toast('Gagal menghapus dari blocklist.');}
+}
+async function blockRepoFromBtn(repo){
+  if(!repo)return;
+  if(!confirm(`Blokir repo "${repo}"?\nRepo ini tidak akan muncul lagi di auto-scan.`))return;
+  try{
+    const r=await fetch('/api/autoscan/blocklist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({repo})});
+    const d=await r.json();
+    _blocklist=d.blocklist||[];
+    renderBlocklist();
+    toast(`🚫 ${repo} diblokir.`);
+  }catch{toast('Gagal menambahkan ke blocklist.');}
 }
 
 /* ── Blockchain Explorer Links ──────────────────────────────────────────────── */
@@ -1642,6 +1741,7 @@ async function toggleStrictMode(){
   fetchConfig();
   fetchRateLimit();
   fetchAutoScanStatus();
+  fetchBlocklist();
 
   // Refresh config every 30s, rate limit every 5m, auto-scan every 15s
   setInterval(fetchConfig, 30000);

@@ -156,6 +156,7 @@ const _moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(_moduleDir, "..", "data");
 const FINDINGS_FILE = path.resolve(DATA_DIR, "findings.json");
 const CUSTOM_QUERIES_FILE = path.resolve(DATA_DIR, "custom-queries.json");
+const BLOCKLIST_FILE = path.resolve(DATA_DIR, "blocklist.json");
 
 function ensureDataDir(): void {
   try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
@@ -187,6 +188,35 @@ setInterval(() => {
   const now = Date.now();
   for (const [ip, e] of _rlMap) if (now - e.ts > RL_WINDOW_MS * 2) _rlMap.delete(ip);
 }, 5 * 60_000).unref?.();
+
+// ── Discord & Slack webhook senders ──────────────────────────────────────────
+async function sendDiscord(content: string): Promise<void> {
+  const url = process.env["DISCORD_WEBHOOK_URL"];
+  if (!url) return;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) logger.warn({ status: res.status }, "Discord webhook failed");
+    else logger.info("Discord webhook sent");
+  } catch (err) { logger.warn({ err }, "Discord webhook error"); }
+}
+
+async function sendSlack(text: string): Promise<void> {
+  const url = process.env["SLACK_WEBHOOK_URL"];
+  if (!url) return;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) logger.warn({ status: res.status }, "Slack webhook failed");
+    else logger.info("Slack webhook sent");
+  } catch (err) { logger.warn({ err }, "Slack webhook error"); }
+}
 
 // ── HTML escaper for Telegram messages ───────────────────────────────────────
 // Telegram's HTML mode only supports a narrow subset of tags. Repo names,
@@ -380,6 +410,20 @@ async function sendTelegram(query: string, findings: Finding[]): Promise<void> {
   } catch (err) {
     logger.warn({ err }, "Telegram notification error");
   }
+
+  // Discord & Slack (plain text version)
+  const plainLines = [
+    `🔴 GH Dork — Crypto Data Exposed`,
+    `🔍 Query: ${query.substring(0, 120)}`,
+    critical.length ? `💀 CRITICAL: ${critical.length} temuan` : null,
+    high.length ? `🟠 HIGH: ${high.length} temuan` : null,
+    ...top.map((f, i) =>
+      `${i + 1}. ${f.severity === "CRITICAL" ? "🔴" : "🟠"} ${f.repo} / ${f.path}\n   ${f.fileUrl}`
+    ),
+    findings.length > 5 ? `...dan ${findings.length - 5} temuan lainnya` : null,
+  ].filter(Boolean).join("\n");
+  void sendDiscord(plainLines);
+  void sendSlack(plainLines);
 }
 
 // ── Auto-scan ─────────────────────────────────────────────────────────────────
@@ -602,6 +646,28 @@ function saveCustomQueries(): void {
   } catch (err) { logger.warn({ err }, "Failed to save custom queries"); }
 }
 
+// ── Repo blocklist (file-backed, survives restarts) ────────────────────────────
+let blocklist: string[] = [];
+
+function loadBlocklist(): void {
+  try {
+    ensureDataDir();
+    const raw = fs.readFileSync(BLOCKLIST_FILE, "utf-8");
+    const parsed = JSON.parse(raw) as string[];
+    blocklist = Array.isArray(parsed) ? parsed : [];
+    if (blocklist.length) logger.info({ count: blocklist.length }, "Blocklist loaded");
+  } catch { blocklist = []; }
+}
+
+function saveBlocklist(): void {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(BLOCKLIST_FILE, JSON.stringify(blocklist, null, 2));
+  } catch (err) { logger.warn({ err }, "Failed to save blocklist"); }
+}
+
+loadBlocklist();
+
 function getAllQueries(): Array<{ label: string; q: string }> {
   return [...AUTO_SCAN_QUERIES, ...customQueries];
 }
@@ -761,6 +827,7 @@ async function runAutoScan(): Promise<void> {
           const snippet = item.text_matches?.[0]?.fragment ?? "";
           const key = findingKey(item.html_url, snippet);
           if (seenFindings.has(key)) continue;
+          if (blocklist.includes(item.repository.full_name)) continue;
 
           const sev = severity(item.path, snippet);
           // Only track CRITICAL/HIGH — LOW/MEDIUM might later contain real secrets
@@ -879,6 +946,20 @@ async function sendAutoScanTelegram(findings: AutoScanFinding[]): Promise<void> 
   } catch (err) {
     logger.warn({ err }, "Auto-scan Telegram error");
   }
+
+  // Discord & Slack (plain text)
+  const plainLines = [
+    `🤖 GH Dork — Auto-Scan Alert`,
+    `⏰ Scan otomatis menemukan eksposur baru!`,
+    critical.length ? `💀 CRITICAL: ${critical.length} temuan baru` : null,
+    high.length ? `🟠 HIGH: ${high.length} temuan baru` : null,
+    ...top.map((f, i) =>
+      `${i + 1}. ${f.severity === "CRITICAL" ? "🔴" : "🟠"} ${f.repo} / ${f.path}\n   🏷 ${f.queryLabel}\n   ${f.fileUrl}`
+    ),
+    findings.length > 5 ? `...dan ${findings.length - 5} temuan lainnya` : null,
+  ].filter(Boolean).join("\n");
+  void sendDiscord(plainLines);
+  void sendSlack(plainLines);
 }
 
 function startScanTimer(): void {
@@ -905,6 +986,8 @@ router.get("/github/config", (_req, res) => {
     tokensConfigured: tokenPool.size,
     tokens: tokenPool.summary(),
     telegramConfigured: !!(process.env["TELEGRAM_BOT_TOKEN"] && process.env["TELEGRAM_CHAT_ID"]),
+    discordConfigured: !!process.env["DISCORD_WEBHOOK_URL"],
+    slackConfigured: !!process.env["SLACK_WEBHOOK_URL"],
   });
 });
 
@@ -1181,6 +1264,69 @@ router.delete("/autoscan/custom-queries/:index", (req, res) => {
   saveCustomQueries();
   logger.info({ removed }, "Custom query removed");
   res.json({ queries: customQueries });
+});
+
+// ── GET /api/autoscan/export ──────────────────────────────────────────────────
+router.get("/autoscan/export", (req, res) => {
+  const format = (req.query["format"] as string | undefined) ?? "json";
+  const findings = autoScanState.recentFindings;
+
+  if (format === "csv") {
+    const header = "timestamp,severity,repo,path,query,queryLabel,fileUrl";
+    const rows = findings.map((f) =>
+      [
+        new Date(f.ts).toISOString(),
+        f.severity,
+        `"${f.repo.replace(/"/g, '""')}"`,
+        `"${f.path.replace(/"/g, '""')}"`,
+        `"${f.query.replace(/"/g, '""')}"`,
+        `"${f.queryLabel.replace(/"/g, '""')}"`,
+        f.fileUrl,
+      ].join(",")
+    );
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="gh-dork-findings-${Date.now()}.csv"`);
+    res.send([header, ...rows].join("\n"));
+  } else {
+    res.setHeader("Content-Disposition", `attachment; filename="gh-dork-findings-${Date.now()}.json"`);
+    res.json(findings);
+  }
+});
+
+// ── GET /api/autoscan/blocklist ───────────────────────────────────────────────
+router.get("/autoscan/blocklist", (_req, res) => {
+  res.json({ blocklist });
+});
+
+// ── POST /api/autoscan/blocklist ──────────────────────────────────────────────
+router.post("/autoscan/blocklist", (req, res) => {
+  const { repo } = req.body as { repo?: string };
+  if (!repo?.trim()) {
+    res.status(400).json({ error: "repo is required (e.g. owner/name)" });
+    return;
+  }
+  const repoName = repo.trim();
+  if (blocklist.includes(repoName)) {
+    res.json({ blocklist });
+    return;
+  }
+  blocklist.push(repoName);
+  saveBlocklist();
+  logger.info({ repo: repoName }, "Repo added to blocklist");
+  res.status(201).json({ blocklist });
+});
+
+// ── DELETE /api/autoscan/blocklist/:index ─────────────────────────────────────
+router.delete("/autoscan/blocklist/:index", (req, res) => {
+  const idx = parseInt(req.params["index"] ?? "", 10);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= blocklist.length) {
+    res.status(400).json({ error: "Invalid index" });
+    return;
+  }
+  const removed = blocklist.splice(idx, 1)[0];
+  saveBlocklist();
+  logger.info({ removed }, "Repo removed from blocklist");
+  res.json({ blocklist });
 });
 
 // ── POST /api/autoscan/strict ─────────────────────────────────────────────────

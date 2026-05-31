@@ -1,5 +1,30 @@
 # Edit History — GH Dork
 
+## 2026-05-31 — Session 3: 3 New Features
+
+### #9 Export CSV/JSON
+- Tombol ⬇ CSV dan ⬇ JSON di header "Temuan Terbaru" tab Auto-Scan
+- Endpoint: `GET /api/autoscan/export?format=csv|json`
+- CSV berisi kolom: timestamp, severity, repo, path, query, queryLabel, fileUrl
+- Download langsung via `<a>` click — tidak perlu library tambahan
+
+### #10 Discord & Slack Webhook
+- Notifikasi dikirim ke Discord dan Slack bersamaan dengan Telegram
+- Set `DISCORD_WEBHOOK_URL` dan/atau `SLACK_WEBHOOK_URL` di Replit Secrets
+- Status Discord/Slack tampil di sidebar (dot hijau = aktif, kuning = belum diset)
+- Berlaku untuk: manual search hits DAN auto-scan findings
+- Format pesan: plain text (Discord/Slack tidak support HTML Telegram)
+
+### #11 Repo Blocklist
+- Blokir repo false positive dari UI — tidak akan muncul lagi di auto-scan
+- Disimpan permanen di `artifacts/api-server/data/blocklist.json`
+- Tombol 🚫 di setiap finding card auto-scan → confirm dialog → langsung terblokir
+- Manajemen manual: tambah/hapus repo di card "Blocklist" tab Auto-Scan
+- Filter diterapkan di server-side dalam `processPage()` sebelum severity check
+- Endpoints: `GET/POST /api/autoscan/blocklist`, `DELETE /api/autoscan/blocklist/:index`
+
+---
+
 ## 2026-05-31 — Session 2: 6 Major Features
 
 ### #1 Persistent Findings
