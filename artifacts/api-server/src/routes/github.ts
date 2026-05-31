@@ -342,7 +342,7 @@ async function sendTelegram(query: string, findings: Finding[]): Promise<void> {
 }
 
 // ── Auto-scan ─────────────────────────────────────────────────────────────────
-const SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+let currentScanIntervalMs = 30 * 60 * 1000; // 30 min default — always scan fresh
 // Adaptive delay: ~1.5 s base; increases when remaining tokens are low
 const BASE_QUERY_DELAY_MS = 1500;
 
@@ -443,6 +443,25 @@ const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   // ── SSH Keys ──────────────────────────────────────────────────────────────
   { label: "OpenSSH Private Key",        q: '"BEGIN OPENSSH PRIVATE KEY"' },
   { label: "RSA Private Key",            q: '"BEGIN RSA PRIVATE KEY"' },
+
+  // ── Python ────────────────────────────────────────────────────────────────
+  { label: "Python private key",         q: 'language:python "PRIVATE_KEY" OR "private_key"' },
+  { label: "Python mnemonic",            q: 'language:python "mnemonic" OR "seed_phrase"' },
+  { label: "Django SECRET_KEY",          q: 'filename:settings.py "SECRET_KEY"' },
+  { label: "Python web3 privateKey",     q: 'language:python "web3" "private_key" NOT "test"' },
+  { label: "Python AWS credential",      q: 'language:python "aws_access_key_id" "aws_secret_access_key"' },
+
+  // ── Go ────────────────────────────────────────────────────────────────────
+  { label: "Go private key",             q: 'language:go "privateKey" OR "PrivateKey"' },
+  { label: "Go mnemonic",                q: 'language:go "mnemonic"' },
+  { label: "Go ethclient key",           q: 'language:go "ethclient" "private" NOT "test"' },
+  { label: "Go config private",          q: 'filename:config.go "PRIVATE_KEY" OR "PrivateKey"' },
+
+  // ── Rust ──────────────────────────────────────────────────────────────────
+  { label: "Rust private key",           q: 'language:rust "private_key" OR "PRIVATE_KEY"' },
+  { label: "Rust mnemonic",              q: 'language:rust "mnemonic"' },
+  { label: "Rust Solana keypair",        q: 'language:rust "solana" "keypair" "secret"' },
+  { label: "Rust ethers key",            q: 'language:rust "ethers" "private_key" NOT "test"' },
 ];
 
 export interface AutoScanFinding {
@@ -465,6 +484,7 @@ const autoScanState = {
   totalNewFindings: 0,
   lastError: null as string | null,
   strictMode: false,
+  queryHits: {} as Record<string, number>,
   // mid-scan token rotation stats (reset each scan)
   tokenSwitches: 0,
   queriesCompleted: 0,
@@ -645,6 +665,7 @@ async function runAutoScan(): Promise<void> {
         };
         newFindings.push(finding);
         autoScanState.recentFindings.unshift(finding);
+        autoScanState.queryHits[label] = (autoScanState.queryHits[label] ?? 0) + 1;
       }
     } catch (err) {
       logger.warn({ err, q }, "Auto-scan query error");
@@ -656,7 +677,7 @@ async function runAutoScan(): Promise<void> {
   autoScanState.recentFindings = autoScanState.recentFindings.slice(0, 100);
   autoScanState.totalNewFindings += newFindings.length;
   autoScanState.running = false;
-  autoScanState.nextScan = Date.now() + SCAN_INTERVAL_MS;
+  autoScanState.nextScan = Date.now() + currentScanIntervalMs;
 
   logger.info(
     {
@@ -720,9 +741,9 @@ async function sendAutoScanTelegram(findings: AutoScanFinding[]): Promise<void> 
 
 function startScanTimer(): void {
   if (scanTimer) clearInterval(scanTimer);
-  autoScanState.nextScan = Date.now() + SCAN_INTERVAL_MS;
-  scanTimer = setInterval(() => { void runAutoScan(); }, SCAN_INTERVAL_MS);
-  logger.info({ intervalMs: SCAN_INTERVAL_MS }, "Auto-scan timer started (1h interval)");
+  autoScanState.nextScan = Date.now() + currentScanIntervalMs;
+  scanTimer = setInterval(() => { void runAutoScan(); }, currentScanIntervalMs);
+  logger.info({ intervalMs: currentScanIntervalMs, minutes: currentScanIntervalMs / 60000 }, "Auto-scan timer started");
 }
 
 function stopScanTimer(): void {
@@ -919,9 +940,10 @@ router.get("/autoscan/status", (_req, res) => {
     scanCount: autoScanState.scanCount,
     totalNewFindings: autoScanState.totalNewFindings,
     recentFindings: autoScanState.recentFindings,
+    queryHits: autoScanState.queryHits,
     queriesCount: AUTO_SCAN_QUERIES.length,
     queries: AUTO_SCAN_QUERIES.map((q) => q.label),
-    intervalMs: SCAN_INTERVAL_MS,
+    intervalMs: currentScanIntervalMs,
     // Token rotation stats from the most recent scan
     lastScanStats: {
       queriesCompleted: autoScanState.queriesCompleted,
@@ -930,6 +952,20 @@ router.get("/autoscan/status", (_req, res) => {
     },
     tokenPool: tokenPool.summary(),
   });
+});
+
+// ── POST /api/autoscan/interval ───────────────────────────────────────────────
+router.post("/autoscan/interval", (req, res) => {
+  const minutes = parseInt(String(req.query["minutes"] ?? ""), 10);
+  const allowed = [15, 30, 60, 120, 360];
+  if (!Number.isFinite(minutes) || !allowed.includes(minutes)) {
+    res.status(400).json({ error: `minutes must be one of: ${allowed.join(", ")}` });
+    return;
+  }
+  currentScanIntervalMs = minutes * 60 * 1000;
+  if (autoScanState.enabled) startScanTimer();
+  logger.info({ intervalMs: currentScanIntervalMs, minutes }, "Auto-scan interval updated");
+  res.json({ intervalMs: currentScanIntervalMs, minutes });
 });
 
 // ── POST /api/autoscan/strict ─────────────────────────────────────────────────

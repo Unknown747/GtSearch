@@ -331,6 +331,36 @@
     .strict-toggle.on{background:rgba(239,68,68,.22);border-color:rgba(239,68,68,.5);font-weight:600;}
     .strict-desc{font-size:10px;color:var(--muted);}
     .batch-lbl{font-size:9px;color:var(--primary);background:rgba(99,102,241,.12);border-radius:3px;padding:1px 5px;margin-left:5px;font-weight:600;}
+    /* ── File preview modal ── */
+    #preview-modal{display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:16px;}
+    #preview-modal.open{display:flex;}
+    .preview-box{background:var(--card);border:1px solid var(--border-h);border-radius:10px;width:min(92vw,880px);max-height:82vh;display:flex;flex-direction:column;overflow:hidden;}
+    .preview-hdr{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0;}
+    .preview-title{flex:1;font-size:11px;color:var(--text-sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;}
+    .preview-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;padding:0 4px;}
+    .preview-close:hover{color:var(--text);}
+    .preview-body{overflow:auto;flex:1;}
+    .preview-body pre{margin:0;padding:10px 14px;font-size:11px;line-height:1.7;color:var(--text-sub);white-space:pre-wrap;word-break:break-all;font-family:monospace;}
+    .preview-line-hl{background:rgba(250,204,21,.15);color:var(--text);display:block;}
+    .preview-loading{padding:24px;text-align:center;color:var(--muted);font-size:12px;}
+    .preview-footer{padding:5px 14px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);flex-shrink:0;}
+    /* ── Explorer links ── */
+    .explorer-links{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;}
+    .explorer-link{font-size:10px;color:var(--primary);background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);border-radius:4px;padding:1px 7px;text-decoration:none;white-space:nowrap;}
+    .explorer-link:hover{background:rgba(99,102,241,.22);}
+    /* ── Leaderboard ── */
+    .lb-wrap{display:flex;flex-direction:column;gap:3px;margin-top:8px;}
+    .lb-row{display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:5px;font-size:11px;background:var(--input);}
+    .lb-rank{color:var(--muted);font-size:10px;width:18px;text-align:right;flex-shrink:0;}
+    .lb-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-sub);}
+    .lb-bar{height:4px;background:var(--primary);border-radius:2px;opacity:.5;flex-shrink:0;}
+    .lb-hits{font-weight:600;color:var(--primary);font-size:12px;flex-shrink:0;width:24px;text-align:right;}
+    /* ── Interval & preview ── */
+    .interval-row{display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
+    .interval-select{background:var(--input);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;}
+    .interval-label{font-size:10px;color:var(--muted);}
+    .preview-btn{background:none;border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;transition:all .15s;margin-right:2px;}
+    .preview-btn:hover{border-color:var(--primary);color:var(--primary);}
   </style>
 </head>
 <body>
@@ -487,12 +517,28 @@
         <button class="strict-toggle" id="btn-strict" onclick="toggleStrictMode()">🎯 CRITICAL-Only</button>
         <span class="strict-desc" id="strict-desc">Mode normal: simpan semua CRITICAL &amp; HIGH</span>
       </div>
+      <div class="interval-row">
+        <span class="interval-label">⏱ Interval scan:</span>
+        <select class="interval-select" id="interval-select" onchange="changeInterval(+this.value)">
+          <option value="15">15 menit</option>
+          <option value="30" selected>30 menit</option>
+          <option value="60">1 jam</option>
+          <option value="120">2 jam</option>
+          <option value="360">6 jam</option>
+        </select>
+      </div>
     </div>
 
     <!-- Query list -->
     <div class="as-queries-card">
       <div class="as-queries-title">Dork Queries yang Dimonitor</div>
       <div class="as-queries-grid" id="as-queries-list"></div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="as-queries-card" style="margin-top:12px">
+      <div class="as-queries-title">🏆 Query Paling Produktif <span class="cnt-badge" id="lb-empty" style="display:none">belum ada data</span></div>
+      <div id="as-leaderboard"></div>
     </div>
 
     <!-- Recent findings -->
@@ -511,6 +557,19 @@
       <button class="btn btn-danger" id="btn-clear" onclick="clearHistory()" style="font-size:11px">🗑 Clear All</button>
     </div>
     <div id="h-list"></div>
+  </div>
+</div>
+
+<!-- File Preview Modal -->
+<div id="preview-modal" onclick="if(event.target===this)closePreview()">
+  <div class="preview-box">
+    <div class="preview-hdr">
+      <span class="preview-title" id="preview-title">—</span>
+      <a id="preview-gh-link" href="#" target="_blank" rel="noopener" style="font-size:10px;color:var(--primary);white-space:nowrap">↗ GitHub</a>
+      <button class="preview-close" onclick="closePreview()">×</button>
+    </div>
+    <div class="preview-body" id="preview-body"><div class="preview-loading">Memuat file…</div></div>
+    <div class="preview-footer" id="preview-footer"></div>
   </div>
 </div>
 
@@ -683,6 +742,32 @@ const DORKS = [
     { label:'CRYPTO API_KEY in CI',        q:'path:.github/workflows "BINANCE_API_KEY" OR "BYBIT_API_KEY"' },
     { label:'Hardcoded PAT in CI',         q:'path:.github/workflows "ghp_" OR "github_pat_"' },
     { label:'RPC URL in CI',               q:'path:.github/workflows "INFURA_PROJECT_ID" OR "ALCHEMY_API_KEY"' },
+  ]},
+  { cat:'Python', icon:'🐍', color:'#3b82f6', queries:[
+    { label:'Python private key',          q:'language:python "PRIVATE_KEY" OR "private_key"' },
+    { label:'Python mnemonic',             q:'language:python "mnemonic" OR "seed_phrase"' },
+    { label:'Django SECRET_KEY',           q:'filename:settings.py "SECRET_KEY"' },
+    { label:'Python web3 privateKey',      q:'language:python "web3" "private_key" NOT "test"' },
+    { label:'Python AWS credential',       q:'language:python "aws_access_key_id" "aws_secret_access_key"' },
+    { label:'Python dotenv private',       q:'extension:py "os.getenv" "PRIVATE_KEY"' },
+    { label:'Python Solana keypair',       q:'language:python "solana" "keypair" "secret"' },
+    { label:'Python Brownie key',          q:'filename:brownie-config.yaml "private_key"' },
+  ]},
+  { cat:'Go', icon:'🐹', color:'#00acd7', queries:[
+    { label:'Go private key',              q:'language:go "privateKey" OR "PrivateKey"' },
+    { label:'Go mnemonic',                 q:'language:go "mnemonic"' },
+    { label:'Go ethclient key',            q:'language:go "ethclient" "private" NOT "test"' },
+    { label:'Go config private',           q:'filename:config.go "PRIVATE_KEY" OR "PrivateKey"' },
+    { label:'Go Solana keypair',           q:'language:go "solana" "keypair"' },
+    { label:'Go godotenv private',         q:'language:go "godotenv" "PRIVATE_KEY"' },
+  ]},
+  { cat:'Rust', icon:'🦀', color:'#f97316', queries:[
+    { label:'Rust private key',            q:'language:rust "private_key" OR "PRIVATE_KEY"' },
+    { label:'Rust mnemonic',               q:'language:rust "mnemonic"' },
+    { label:'Rust Solana keypair',         q:'language:rust "solana" "keypair" "secret"' },
+    { label:'Rust ethers key',             q:'language:rust "ethers" "private_key" NOT "test"' },
+    { label:'Cargo credentials',           q:'filename:credentials path:.cargo "token"' },
+    { label:'Rust anchor keypair',         q:'language:rust "anchor" "keypair"' },
   ]},
 ];
 
@@ -1062,13 +1147,15 @@ function renderContent(data,error,loading) {
       const archBadge=repo.archived?'<span class="repo-badge badge-arch">archived</span>':'';
       const batchLbl=item._batchLabel?`<span class="batch-lbl">${esc(item._batchLabel)}</span>`:'';
       const fileUrl=esc(item.html_url||'');
-      html+=`<div class="result-card" data-url="${fileUrl}"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${fileUrl}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a>${batchLbl}</div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span><span class="meta-item">📅 ${pushed}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan hasil ini">✕</button><button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button></div></div>${highlightSnippet(fragment,matches)}</div>`;
+      const explorerHtml=sev==='CRITICAL'?detectExplorerLinks(item.path||'',fragment):'';
+      html+=`<div class="result-card" data-url="${fileUrl}"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${fileUrl}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a>${batchLbl}</div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span><span class="meta-item">📅 ${pushed}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="preview-btn" data-preview="${fileUrl}" data-label="${esc(item.path||'')}" title="Preview file">👁</button><button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan hasil ini">✕</button><button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button></div></div>${highlightSnippet(fragment,matches)}${explorerHtml}</div>`;
     });
     if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
   }
   area.innerHTML=html;
   area.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>copyText(b.dataset.copy)));
   area.querySelectorAll('[data-ignore]').forEach(b=>b.addEventListener('click',()=>ignoreUrl(b.dataset.ignore)));
+  area.querySelectorAll('[data-preview]').forEach(b=>b.addEventListener('click',()=>previewFile(b.dataset.preview,b.dataset.label)));
 }
 
 /* ── Auto-Scan View ─────────────────────────────────────────────────────────── */
@@ -1080,7 +1167,11 @@ function renderAutoScan() {
   document.getElementById('as-stat-scans').textContent=as.scanCount||0;
   document.getElementById('as-stat-new').textContent=as.totalNewFindings||0;
   document.getElementById('as-stat-queries').textContent=as.queriesCount||0;
-  document.getElementById('as-stat-interval').textContent='1j';
+  const iMins=as.intervalMs?Math.round(as.intervalMs/60000):30;
+  document.getElementById('as-stat-interval').textContent=iMins>=60?`${iMins/60}j`:`${iMins}m`;
+  // Sync interval select
+  const iSel=document.getElementById('interval-select');
+  if(iSel&&as.intervalMs){const m=Math.round(as.intervalMs/60000);if([15,30,60,120,360].includes(m))iSel.value=String(m);}
 
   // Pill & running dot
   const pill=document.getElementById('as-pill');
@@ -1099,6 +1190,9 @@ function renderAutoScan() {
     strictBtn.textContent=as.strictMode?'🎯 CRITICAL-Only ✓':'🎯 CRITICAL-Only';
   }
   if(strictDesc) strictDesc.textContent=as.strictMode?'Mode strict: hanya temuan yang cocok dengan regex (nilai aktual terdeteksi)':'Mode normal: simpan semua CRITICAL & HIGH';
+
+  // Leaderboard
+  renderLeaderboard(as.queryHits);
 
   // Sub text
   let sub='';
@@ -1127,9 +1221,11 @@ function renderAutoScan() {
   }
   list.innerHTML=findings.map(f=>{
     const d=new Date(f.ts).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-    return `<div class="as-find-card"><div class="as-find-top"><div class="as-find-links"><div><a href="#" class="as-find-repo">${esc(f.repo)}</a><span class="sep">/</span><a href="${esc(f.fileUrl)}" target="_blank" rel="noopener" class="as-find-file">${esc(f.path)} ↗</a></div><div class="as-find-meta"><span class="as-find-meta-item">🕐 ${d}</span><span class="as-find-query">🏷 ${esc(f.queryLabel)}</span></div></div><div class="result-actions"><span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><button class="copy-btn" data-copy="${esc(f.fileUrl)}" title="Salin URL">⎘</button></div></div></div>`;
+    const fUrl=esc(f.fileUrl);
+    return `<div class="as-find-card"><div class="as-find-top"><div class="as-find-links"><div><a href="#" class="as-find-repo">${esc(f.repo)}</a><span class="sep">/</span><a href="${fUrl}" target="_blank" rel="noopener" class="as-find-file">${esc(f.path)} ↗</a></div><div class="as-find-meta"><span class="as-find-meta-item">🕐 ${d}</span><span class="as-find-query">🏷 ${esc(f.queryLabel)}</span></div></div><div class="result-actions"><span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><button class="preview-btn" data-preview="${fUrl}" data-label="${esc(f.path)}" title="Preview file">👁</button><button class="copy-btn" data-copy="${fUrl}" title="Salin URL">⎘</button></div></div></div>`;
   }).join('');
   list.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>copyText(b.dataset.copy)));
+  list.querySelectorAll('[data-preview]').forEach(b=>b.addEventListener('click',()=>previewFile(b.dataset.preview,b.dataset.label)));
 }
 
 /* ── History View ───────────────────────────────────────────────────────────── */
@@ -1303,6 +1399,116 @@ function runBuilderQuery(){
   panel.classList.remove('open');
   document.getElementById('btn-builder').textContent='🔧 Builder ▾';
   doSearch();
+}
+
+/* ── Blockchain Explorer Links ──────────────────────────────────────────────── */
+function detectExplorerLinks(path, fragment) {
+  const raw=path+' '+fragment;
+  const lo=raw.toLowerCase();
+  const links=[];
+  // Try to extract actual ETH address (0x + 40 hex)
+  const ethAddr=/\b0x[0-9a-fA-F]{40}\b/.exec(raw);
+  // Try to extract TRON address
+  const tronAddr=/\bT[A-Za-z0-9]{33}\b/.exec(raw);
+  if(ethAddr){
+    links.push(`<a class="explorer-link" href="https://etherscan.io/address/${ethAddr[0]}" target="_blank" rel="noopener">⟠ Etherscan</a>`);
+    links.push(`<a class="explorer-link" href="https://bscscan.com/address/${ethAddr[0]}" target="_blank" rel="noopener">🟡 BscScan</a>`);
+  } else if(lo.includes('eth')||lo.includes('evm')||lo.includes('deployer')||lo.includes('ethereum')||lo.includes('polygon')||lo.includes('arbitrum')||lo.includes('optimism')||lo.includes('base')||lo.includes('bsc')||lo.includes('bnb')){
+    links.push(`<a class="explorer-link" href="https://etherscan.io" target="_blank" rel="noopener">⟠ Etherscan</a>`);
+  }
+  if(tronAddr){
+    links.push(`<a class="explorer-link" href="https://tronscan.org/#/address/${tronAddr[0]}" target="_blank" rel="noopener">🔺 TronScan</a>`);
+  } else if(lo.includes('tron')||lo.includes('trx')||lo.includes('tronweb')){
+    links.push(`<a class="explorer-link" href="https://tronscan.org" target="_blank" rel="noopener">🔺 TronScan</a>`);
+  }
+  if(lo.includes('solana')||lo.includes('phantom')||lo.includes('anchor')||lo.includes('keypair.json')||lo.includes('sol_')){
+    links.push(`<a class="explorer-link" href="https://solscan.io" target="_blank" rel="noopener">◎ Solscan</a>`);
+  }
+  if(lo.includes('bitcoin')||lo.includes('btc')||lo.includes('xprv')||lo.includes('wif')){
+    links.push(`<a class="explorer-link" href="https://blockchain.com/explorer" target="_blank" rel="noopener">₿ Blockchain</a>`);
+  }
+  if(lo.includes('near')||lo.includes('ed25519:')){
+    links.push(`<a class="explorer-link" href="https://nearblocks.io" target="_blank" rel="noopener">Ⓝ NEAR Blocks</a>`);
+  }
+  if(lo.includes('cosmos')||lo.includes('terra')||lo.includes('cosmjs')){
+    links.push(`<a class="explorer-link" href="https://mintscan.io" target="_blank" rel="noopener">⚛ Mintscan</a>`);
+  }
+  if(!links.length) return '';
+  return `<div class="explorer-links">${links.join('')}</div>`;
+}
+
+/* ── File Preview ───────────────────────────────────────────────────────────── */
+async function previewFile(fileUrl, label) {
+  const modal=document.getElementById('preview-modal');
+  const body=document.getElementById('preview-body');
+  const title=document.getElementById('preview-title');
+  const footer=document.getElementById('preview-footer');
+  const ghLink=document.getElementById('preview-gh-link');
+  title.textContent=label||fileUrl;
+  ghLink.href=fileUrl;
+  body.innerHTML='<div class="preview-loading">⏳ Memuat file…</div>';
+  footer.textContent='';
+  modal.classList.add('open');
+  document.body.style.overflow='hidden';
+  try {
+    // github.com/owner/repo/blob/sha/path → raw.githubusercontent.com/owner/repo/sha/path
+    const rawUrl=fileUrl
+      .replace('https://github.com/','https://raw.githubusercontent.com/')
+      .replace('/blob/','/');
+    const r=await fetch(rawUrl);
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const text=await r.text();
+    const lines=text.split('\n');
+    const limited=lines.slice(0,300);
+    const keywords=['private_key','privatekey','mnemonic','secret','password','token','api_key','0x','xprv','ed25519','seed'];
+    const pre=limited.map((line,i)=>{
+      const isHl=keywords.some(k=>line.toLowerCase().includes(k));
+      const ln=esc(line)||' ';
+      const num=String(i+1).padStart(4,' ');
+      return isHl
+        ?`<span class="preview-line-hl">${num}  ${ln}\n</span>`
+        :`<span>${num}  ${ln}\n</span>`;
+    }).join('');
+    body.innerHTML=`<pre>${pre}</pre>`;
+    footer.textContent=`${limited.length} baris ditampilkan${lines.length>300?` dari ${lines.length} total (dibatasi 300)`:''}`;
+  } catch(e) {
+    body.innerHTML=`<div class="preview-loading" style="color:var(--red)">Gagal memuat: ${esc(e.message)}<br><br><a href="${esc(fileUrl)}" target="_blank" rel="noopener" style="color:var(--primary)">Buka di GitHub ↗</a></div>`;
+  }
+}
+function closePreview() {
+  document.getElementById('preview-modal').classList.remove('open');
+  document.body.style.overflow='';
+}
+
+/* ── Interval Configurator ──────────────────────────────────────────────────── */
+async function changeInterval(minutes) {
+  try {
+    const r=await fetch(`/api/autoscan/interval?minutes=${minutes}`,{method:'POST'});
+    const d=await r.json();
+    if(r.ok){ toast(`Interval scan diubah ke ${minutes} menit ✓`); await fetchAutoScanStatus(); }
+    else toast(d.error||'Gagal mengubah interval.');
+  } catch{ toast('Gagal menghubungi server.'); }
+}
+
+/* ── Leaderboard ────────────────────────────────────────────────────────────── */
+function renderLeaderboard(queryHits) {
+  const lb=document.getElementById('as-leaderboard');
+  const empty=document.getElementById('lb-empty');
+  if(!lb) return;
+  const entries=queryHits?Object.entries(queryHits).filter(([,v])=>v>0):[];
+  if(!entries.length){
+    lb.innerHTML='';
+    if(empty) empty.style.display='inline';
+    return;
+  }
+  if(empty) empty.style.display='none';
+  const sorted=entries.sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const max=sorted[0][1];
+  lb.innerHTML=`<div class="lb-wrap">${sorted.map(([label,hits],i)=>{
+    const barW=Math.max(8,Math.round((hits/max)*90));
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+    return `<div class="lb-row"><span class="lb-rank">${medal||'#'+(i+1)}</span><span class="lb-label" title="${esc(label)}">${esc(label)}</span><div class="lb-bar" style="width:${barW}px"></div><span class="lb-hits">${hits}</span></div>`;
+  }).join('')}</div>`;
 }
 
 /* ── Auto-Scan Strict Mode ──────────────────────────────────────────────────── */

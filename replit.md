@@ -38,6 +38,11 @@ artifacts/api-server/
 - `GET /api/github/config` — token/telegram status
 - `GET /api/github/rate-limit` — current GitHub rate limit
 - `POST /api/github/notify-test` — test Telegram notification
+- `GET /api/autoscan/status` — full auto-scan state (queryHits, recentFindings, intervalMs…)
+- `POST /api/autoscan/interval?minutes=` — change scan interval (15/30/60/120/360)
+- `POST /api/autoscan/toggle` — enable/disable auto-scan
+- `POST /api/autoscan/run-now` — trigger immediate scan
+- `POST /api/autoscan/strict` — toggle CRITICAL-only strict mode
 - `GET /api/healthz` — health check
 
 ## Required Secrets (Replit Secrets)
@@ -53,6 +58,11 @@ artifacts/api-server/
 - Severity classification happens server-side (in `github.ts`) and is returned enriched in search results.
 - Telegram notifications fire server-side only for CRITICAL/HIGH findings, async (non-blocking).
 - History stored in browser `localStorage`, max 50 entries.
+- Auto-scan interval is `let currentScanIntervalMs` (default 30 min), mutable via `POST /api/autoscan/interval?minutes=`.
+- `autoScanState.queryHits` tracks per-query finding counts (persists for process lifetime).
+- File preview fetches raw.githubusercontent.com directly from browser (no backend proxy needed).
+- Blockchain explorer links shown client-side on CRITICAL cards using regex address extraction + keyword detection.
+- Dork library: 15 categories + Python / Go / Rust (74 total auto-scan queries).
 
 ## User preferences
 
