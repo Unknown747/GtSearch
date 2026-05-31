@@ -441,7 +441,7 @@ const DORKS = [
   { cat:'Wallet & Seed Phrases', icon:'👛', color:'#facc15', queries:[
     { label:'mnemonic .env',          q:'filename:.env "MNEMONIC"' },
     { label:'PRIVATE_KEY .env',       q:'filename:.env "PRIVATE_KEY"' },
-    { label:'wallet.json keystore',   q:'filename:wallet.json "crypto" "ciphertext"' },
+    { label:'wallet.json',             q:'filename:wallet.json "crypto" "ciphertext"' },
     { label:'seed phrase JS',         q:'"bip39" "mnemonic" "entropy"' },
     { label:'recovery.txt',           q:'filename:recovery.txt "phrase"' },
     { label:'mnemonic.json',          q:'filename:mnemonic.json' },
@@ -476,9 +476,9 @@ const DORKS = [
     { label:'Pinata IPFS key',  q:'filename:.env "PINATA_API_KEY" "PINATA_SECRET"' },
     { label:'NFT Storage key',  q:'filename:.env "NFT_STORAGE_API_KEY"' },
   ]},
-  { cat:'Keystore & Backup Files', icon:'🗝', color:'#fb923c', queries:[
-    { label:'Ethereum keystore',    q:'filename:keystore.json "version" "crypto" "ciphertext"' },
-    { label:'UTC-- keystore',       q:'filename:UTC-- "ciphertext"' },
+  { cat:'Wallet & Backup Files', icon:'👜', color:'#fb923c', queries:[
+    { label:'Ethereum wallet',      q:'filename:keystore.json "version" "crypto" "ciphertext"' },
+    { label:'UTC-- wallet',         q:'filename:UTC-- "ciphertext"' },
     { label:'Private Keys (raw)',   q:'"BEGIN RSA PRIVATE KEY"' },
     { label:'OpenSSH Private Key',  q:'"BEGIN OPENSSH PRIVATE KEY"' },
   ]},

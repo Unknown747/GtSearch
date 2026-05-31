@@ -245,7 +245,7 @@ const QUERY_DELAY_MS = 2000;             // polite pause between queries
 const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   { label: "mnemonic .env",          q: 'filename:.env "MNEMONIC"' },
   { label: "PRIVATE_KEY .env",       q: 'filename:.env "PRIVATE_KEY"' },
-  { label: "wallet.json keystore",   q: 'filename:wallet.json "crypto" "ciphertext"' },
+  { label: "wallet.json",            q: 'filename:wallet.json "crypto" "ciphertext"' },
   { label: "Trust Wallet mnemonic",  q: '"trustwallet" "mnemonic" extension:json' },
   { label: "Binance API key",        q: 'filename:.env "BINANCE_API_KEY"' },
   { label: "Coinbase API key",       q: 'filename:.env "COINBASE_API_KEY"' },
@@ -253,7 +253,7 @@ const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   { label: "Hardhat private key",    q: 'filename:hardhat.config.js "PRIVATE_KEY"' },
   { label: "deployer key",           q: '"DEPLOYER_PRIVATE_KEY" filename:.env' },
   { label: "OpenSSH Private Key",    q: '"BEGIN OPENSSH PRIVATE KEY"' },
-  { label: "Ethereum keystore",      q: 'filename:keystore.json "version" "crypto" "ciphertext"' },
+  { label: "Ethereum wallet",        q: 'filename:keystore.json "version" "crypto" "ciphertext"' },
   { label: "Infura Project ID",      q: 'filename:.env "INFURA_PROJECT_ID"' },
   { label: "Alchemy API key",        q: 'filename:.env "ALCHEMY_API_KEY"' },
   { label: "OpenSea API key",        q: 'filename:.env "OPENSEA_API_KEY"' },
