@@ -1485,16 +1485,9 @@ router.get("/github/search", async (req, res) => {
 
   const { token } = picked;
 
-  // Auto-inject freshness filter: add pushed:>DATE (30 days) if not already specified.
-  // This ensures manual searches always return recent results by default.
-  let finalQuery = q;
-  if (!/pushed:>/.test(q)) {
-    const cutoff30 = new Date();
-    cutoff30.setDate(cutoff30.getDate() - 30);
-    finalQuery += ` pushed:>${cutoff30.toISOString().slice(0, 10)}`;
-  }
-
-  const url = `https://api.github.com/search/code?q=${encodeURIComponent(finalQuery)}&per_page=${perPage}&page=${page}&sort=indexed&order=desc`;
+  // Note: pushed: is a repository search qualifier — NOT valid in /search/code.
+  // Sending it causes HTTP 422. Query is used as-is.
+  const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&sort=indexed&order=desc`;
   const headers: Record<string, string> = {
     Authorization: `token ${token}`,
     Accept: "application/vnd.github.text-match+json",

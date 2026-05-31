@@ -13,8 +13,14 @@
 - **Fix:** HTTP 401 → `flagError` (auth error). HTTP 403/429 → hanya `update(token, 0, resetSec)` tanpa flag error (rate limit, token masih valid).
 - **Tambahan:** HTTP 422 kini log error body untuk debugging, lalu skip (bukan throw).
 
+### #43 Fix: Hapus `pushed:>` injection dari manual search route
+- **File:** `artifacts/api-server/src/routes/github.ts` (route GET /api/github/search, baris ~1488)
+- **Root cause:** Manual search route juga auto-inject `pushed:>DATE` ke query — sama seperti auto-scan. Menghasilkan 422 dan error `ERROR_TYPE_QUERY_PARSING_FATAL` di UI.
+- **Fix:** Hapus blok auto-inject `pushed:>`. Query dikirim apa adanya ke GitHub API.
+
 ### Hasil setelah fix
-- Auto-scan scan #1 menemukan **139 findings** tanpa satu pun 422 error
+- Auto-scan scan #1 menemukan **168 findings** tanpa satu pun 422 error
+- Manual search `filename:.env PRIVATE_KEY` → `total_count: 4,676` ✅
 - Query sukses: "mnemonic .env" (60 results, 2 pages), "Trust Wallet mnemonic" (58 results), "seed phrase JS" (60 results), dll.
 
 ## 2026-05-31 — Session 8: Enhancement Batch (#33–#40)
