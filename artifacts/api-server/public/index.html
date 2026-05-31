@@ -373,7 +373,7 @@
       <input class="input" id="scope-input" type="text" placeholder="Scope: username atau org GitHub (opsional)" autocomplete="off">
       <div class="filter-row">
         <label class="filter-chk" title="Exclude hasil dari repo fork — mengurangi duplikat secara signifikan"><input type="checkbox" id="f-no-fork" checked> <span>Exclude forks</span></label>
-        <label class="filter-chk" title="Hanya repo yang masih aktif sejak 2023"><input type="checkbox" id="f-active"> <span>Active (2023+)</span></label>
+        <label class="filter-chk" title="Hanya repo yang masih aktif sejak 2024"><input type="checkbox" id="f-active" checked> <span>Active (2024+)</span></label>
         <label class="filter-chk" title="Tampilkan CRITICAL terlebih dahulu"><input type="checkbox" id="f-sort-sev" checked> <span>Sort: severity</span></label>
       </div>
       <div class="mobile-pills" id="mobile-pills"></div>
@@ -905,7 +905,7 @@ function doSearch() {
   const scope=document.getElementById('scope-input').value.trim();
   if(scope) q+=` user:${scope}`;
   if(document.getElementById('f-no-fork').checked)   q+=' fork:false';
-  if(document.getElementById('f-active').checked)    q+=' pushed:>2023-01-01';
+  if(document.getElementById('f-active').checked)    q+=' pushed:>2024-01-01';
   S.sortBySev=document.getElementById('f-sort-sev').checked;
   S.seenUrls=new Set();
   S.activeQuery=q; S.page=1; runSearch();
@@ -948,7 +948,18 @@ function renderContent(data,error,loading) {
     if(S.sortBySev) items.sort((a,b)=>{
       const sa=a.severity||severity(a.path||'',a.snippet||(a.text_matches&&a.text_matches[0]?.fragment)||'');
       const sb=b.severity||severity(b.path||'',b.snippet||(b.text_matches&&b.text_matches[0]?.fragment)||'');
-      return (SEV_ORD[sa]??3)-(SEV_ORD[sb]??3);
+      const sevDiff=(SEV_ORD[sa]??3)-(SEV_ORD[sb]??3);
+      if(sevDiff!==0) return sevDiff;
+      // Same severity → sort by repo pushed_at descending (newest first)
+      const da=new Date(a.repository?.pushed_at||a.repository?.updated_at||0).getTime();
+      const db=new Date(b.repository?.pushed_at||b.repository?.updated_at||0).getTime();
+      return db-da;
+    });
+    // When not sorting by severity, sort purely by date (newest first)
+    if(!S.sortBySev) items.sort((a,b)=>{
+      const da=new Date(a.repository?.pushed_at||a.repository?.updated_at||0).getTime();
+      const db=new Date(b.repository?.pushed_at||b.repository?.updated_at||0).getTime();
+      return db-da;
     });
     const deduped=items.filter(item=>!S.seenUrls.has(item.html_url||''));
     deduped.forEach(item=>{
