@@ -373,7 +373,7 @@
       <input class="input" id="scope-input" type="text" placeholder="Scope: username atau org GitHub (opsional)" autocomplete="off">
       <div class="filter-row">
         <label class="filter-chk" title="Exclude hasil dari repo fork — mengurangi duplikat secara signifikan"><input type="checkbox" id="f-no-fork" checked> <span>Exclude forks</span></label>
-        <label class="filter-chk" title="Hanya repo yang masih aktif sejak 2024"><input type="checkbox" id="f-active" checked> <span>Active (2024+)</span></label>
+        <label class="filter-chk" title="Hanya repo yang di-push dalam 90 hari terakhir — hasil lebih fresh"><input type="checkbox" id="f-active" checked> <span>Recent (90d)</span></label>
         <label class="filter-chk" title="Tampilkan CRITICAL terlebih dahulu"><input type="checkbox" id="f-sort-sev" checked> <span>Sort: severity</span></label>
       </div>
       <div class="mobile-pills" id="mobile-pills"></div>
@@ -905,7 +905,10 @@ function doSearch() {
   const scope=document.getElementById('scope-input').value.trim();
   if(scope) q+=` user:${scope}`;
   if(document.getElementById('f-no-fork').checked)   q+=' fork:false';
-  if(document.getElementById('f-active').checked)    q+=' pushed:>2024-01-01';
+  if(document.getElementById('f-active').checked){
+    const d=new Date(); d.setDate(d.getDate()-90);
+    q+=` pushed:>${d.toISOString().slice(0,10)}`;
+  }
   S.sortBySev=document.getElementById('f-sort-sev').checked;
   S.seenUrls=new Set();
   S.activeQuery=q; S.page=1; runSearch();
@@ -939,7 +942,7 @@ function renderContent(data,error,loading) {
   const sortLabel=S.sortBySev?'<span class="sort-badge">↑ severity</span>':'';
   let html=`<div class="results-meta"><span><span class="count-hi">${totalCount.toLocaleString()}</span> hasil ditemukan${totalCount>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>${sortLabel}Hal. ${S.page} / ${totalPages||1}</span></div>`;
   if(totalCount>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Notifikasi CRITICAL/HIGH otomatis dikirim ke Telegram</div>`;
-  if(totalCount>0) html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman. Diurutkan berdasarkan waktu index terbaru.</div>`;
+  if(totalCount>0){const cutoff=document.getElementById('f-active').checked?(()=>{const d=new Date();d.setDate(d.getDate()-90);return ' · Filter: 90 hari terakhir';})():'';html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman. Diurutkan: severity → terbaru${cutoff}.</div>`;}
   if(!data.items||data.items.length===0) {
     html+=`<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil</div><div class="empty-sub">Coba query berbeda atau hapus filter (Exclude forks / Active)</div></div>`;
   } else {

@@ -564,7 +564,9 @@ async function runAutoScan(): Promise<void> {
     prevToken = token;
 
     try {
-      const url = `https://api.github.com/search/code?q=${encodeURIComponent(q + ' fork:false')}&per_page=30&page=1&sort=indexed&order=desc`;
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 90);
+      const rollingDate = cutoff.toISOString().slice(0, 10);
+      const url = `https://api.github.com/search/code?q=${encodeURIComponent(q + ` fork:false pushed:>${rollingDate}`)}&per_page=30&page=1&sort=indexed&order=desc`;
       const headers: Record<string, string> = {
         Authorization: `token ${token}`,
         Accept: "application/vnd.github.text-match+json",
