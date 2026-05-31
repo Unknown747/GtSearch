@@ -448,7 +448,7 @@
       <input class="input" id="scope-input" type="text" placeholder="Scope: username atau org GitHub (opsional)" autocomplete="off">
       <div class="filter-row">
         <label class="filter-chk" title="Exclude hasil dari repo fork — mengurangi duplikat secara signifikan"><input type="checkbox" id="f-no-fork" checked> <span>Exclude forks</span></label>
-        <label class="filter-chk" title="Hanya repo yang di-push dalam 90 hari terakhir — hasil lebih fresh"><input type="checkbox" id="f-active" checked> <span>Recent (90d)</span></label>
+        <label class="filter-chk" title="Hanya repo yang di-push dalam 30 hari terakhir — hasil fresh saja"><input type="checkbox" id="f-active" checked> <span>Recent (30d)</span></label>
         <label class="filter-chk" title="Tampilkan CRITICAL terlebih dahulu"><input type="checkbox" id="f-sort-sev" checked> <span>Sort: severity</span></label>
         <label class="filter-chk" title="Maksimal 1 hasil per repo — hasil lebih beragam"><input type="checkbox" id="f-one-per-repo"> <span>1/repo</span></label>
         <select class="age-select" id="f-age" title="Filter berdasarkan tahun repo dibuat">
@@ -1054,7 +1054,7 @@ function toggleCat(ci) {
   const chev=document.querySelector(`.cat-btn[data-ci="${ci}"] .chevron`);
   if(chev) chev.className='chevron'+(S.openCats.has(ci)?' open':'');
 }
-function pickDork(ci,di) { const q=DORKS[ci].queries[di].q; document.getElementById('q-input').value=q; S.activeQuery=q; runSearch(); }
+function pickDork(ci,di) { const q=DORKS[ci].queries[di].q; document.getElementById('q-input').value=q; doSearch(); }
 
 /* ── Search ─────────────────────────────────────────────────────────────────── */
 function doSearch() {
@@ -1063,7 +1063,7 @@ function doSearch() {
   if(scope) q+=` user:${scope}`;
   if(document.getElementById('f-no-fork').checked)   q+=' fork:false';
   if(document.getElementById('f-active').checked){
-    const d=new Date(); d.setDate(d.getDate()-90);
+    const d=new Date(); d.setDate(d.getDate()-30);
     q+=` pushed:>${d.toISOString().slice(0,10)}`;
   }
   S.sortBySev=document.getElementById('f-sort-sev').checked;
@@ -1242,7 +1242,7 @@ function renderHistory() {
   list.innerHTML=entries.map(e=>`<div class="h-entry"><span style="color:var(--muted);flex-shrink:0">🔍</span><div style="flex:1;min-width:0"><div class="h-query" title="${esc(e.query)}">${esc(e.query)}</div><div class="h-sub"><span class="h-sub-item">🕐 ${rel(e.ts)}</span><span class="h-sub-item">≡ ${(e.count??0).toLocaleString()} results</span></div></div><button class="rerun-btn" data-q="${esc(e.query)}">Re-run →</button></div>`).join('')+`<div class="h-limit">⚠ History disimpan di browser. Maks. 50 pencarian.</div>`;
   list.querySelectorAll('.rerun-btn').forEach(b=>b.addEventListener('click',()=>rerun(b.dataset.q)));
 }
-function rerun(q) { document.getElementById('q-input').value=q; S.activeQuery=q; S.page=1; showView('search'); runSearch(); }
+function rerun(q) { document.getElementById('q-input').value=q; S.page=1; showView('search'); doSearch(); }
 
 /* ── Views ──────────────────────────────────────────────────────────────────── */
 function showView(v) {

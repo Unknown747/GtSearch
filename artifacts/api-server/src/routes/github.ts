@@ -491,8 +491,20 @@ const autoScanState = {
   queriesSkipped: 0,
 };
 
-// Tracks file URLs we've already alerted on — survives for the life of the process
+// Tracks file URLs we've already alerted on.
+// Cleared every 7 days so re-committed files with new credentials get re-detected.
 const seenFindings = new Set<string>();
+let seenFindingsCreatedAt = Date.now();
+const SEEN_FINDINGS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function maybeClearSeenFindings(): void {
+  if (Date.now() - seenFindingsCreatedAt > SEEN_FINDINGS_TTL_MS) {
+    const prev = seenFindings.size;
+    seenFindings.clear();
+    seenFindingsCreatedAt = Date.now();
+    logger.info({ cleared: prev }, "seenFindings reset after 7 days — re-scanning known URLs");
+  }
+}
 
 let scanTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -538,6 +550,7 @@ async function runAutoScan(): Promise<void> {
     return;
   }
 
+  maybeClearSeenFindings();
   autoScanState.running = true;
   autoScanState.lastError = null;
   autoScanState.tokenSwitches = 0;
@@ -585,7 +598,7 @@ async function runAutoScan(): Promise<void> {
     prevToken = token;
 
     try {
-      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 90);
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14);
       const rollingDate = cutoff.toISOString().slice(0, 10);
       const url = `https://api.github.com/search/code?q=${encodeURIComponent(q + ` fork:false pushed:>${rollingDate}`)}&per_page=30&page=1&sort=indexed&order=desc`;
       const headers: Record<string, string> = {
@@ -816,7 +829,17 @@ router.get("/github/search", async (req, res) => {
   }
 
   const { token } = picked;
-  const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&sort=indexed&order=desc`;
+
+  // Auto-inject freshness filter: add pushed:>DATE (30 days) if not already specified.
+  // This ensures manual searches always return recent results by default.
+  let finalQuery = q;
+  if (!/pushed:>/.test(q)) {
+    const cutoff30 = new Date();
+    cutoff30.setDate(cutoff30.getDate() - 30);
+    finalQuery += ` pushed:>${cutoff30.toISOString().slice(0, 10)}`;
+  }
+
+  const url = `https://api.github.com/search/code?q=${encodeURIComponent(finalQuery)}&per_page=${perPage}&page=${page}&sort=indexed&order=desc`;
   const headers: Record<string, string> = {
     Authorization: `token ${token}`,
     Accept: "application/vnd.github.text-match+json",
@@ -875,8 +898,14 @@ router.get("/github/search", async (req, res) => {
     });
 
     if (notify) {
+      // Only notify for repos that were pushed in the last 30 days — skip old stale findings
+      const freshCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
       const hits: Finding[] = enriched
-        .filter((i) => i.severity === "CRITICAL" || i.severity === "HIGH")
+        .filter((i) => {
+          if (i.severity !== "CRITICAL" && i.severity !== "HIGH") return false;
+          const repoDate = new Date(i.repository.updated_at ?? 0).getTime();
+          return repoDate >= freshCutoff;
+        })
         .map((i) => ({
           severity: i.severity,
           repo: i.repository.full_name,
@@ -884,7 +913,7 @@ router.get("/github/search", async (req, res) => {
           fileUrl: i.html_url,
           snippet: i.snippet,
         }));
-      if (hits.length > 0) void sendTelegram(q, hits);
+      if (hits.length > 0) void sendTelegram(finalQuery, hits);
     }
 
     res.json({ ...data, items: enriched });
