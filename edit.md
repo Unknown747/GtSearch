@@ -1,5 +1,17 @@
 # Edit History — GH Dork
 
+## 2026-05-31 — Session 3: 5 Perubahan (#10–#14)
+
+### #14 Token Health Dashboard
+- Section "🔑 Token Health" collapsible di sidebar (klik untuk buka/tutup)
+- Tampil otomatis hanya jika ada ≥1 token terkonfigurasi
+- Per-token: suffix (4 karakter terakhir), sisa kuota (`remaining / 5000`), progress bar warna, badge status, countdown reset
+- Badge status: `OK` (hijau, >20%), `LOW` (kuning, 5–20%), `CRIT` (merah, ≤5%), `DEAD` (ungu, errors ≥ 3)
+- Data diambil dari `/api/github/config` (`tokens` field) yang di-refresh setiap 30 detik — tanpa endpoint baru
+- File: `index.html` (CSS `.th-*`, HTML `#th-wrap`/`#th-list`, JS `renderTokenHealth()`, `toggleTokenHealth()`, update `fetchConfig()`)
+
+---
+
 ## 2026-05-31 — Session 3: 4 Perubahan (#10–#13)
 
 ### #10 Export CSV/JSON

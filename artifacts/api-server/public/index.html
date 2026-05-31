@@ -298,6 +298,25 @@
     #toast.show { opacity: 1; transform: translateY(0); }
 
     /* ── Blocklist ── */
+    /* Token Health Dashboard */
+    .th-wrap { margin-top:10px; border-top:1px solid var(--border); padding-top:8px; }
+    .th-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; user-select:none; }
+    .th-caret { font-size:9px; transition:transform .2s; }
+    .th-caret.open { transform:rotate(90deg); }
+    .th-list { display:flex; flex-direction:column; gap:5px; }
+    .th-row { display:flex; flex-direction:column; gap:2px; padding:5px 7px; border-radius:4px; background:var(--bg); border:1px solid var(--border); }
+    .th-row-top { display:flex; align-items:center; justify-content:space-between; }
+    .th-suffix { font-size:10px; font-weight:700; font-family:monospace; color:var(--fg); }
+    .th-rem { font-size:10px; color:var(--muted); }
+    .th-badge { font-size:9px; padding:1px 5px; border-radius:3px; font-weight:600; }
+    .th-ok   { background:#1a3a1a; color:#4ade80; }
+    .th-warn { background:#3a2a00; color:#fbbf24; }
+    .th-low  { background:#3a1a1a; color:#f87171; }
+    .th-dead { background:#2a1a2a; color:#a855f7; }
+    .th-track { height:3px; background:var(--border); border-radius:2px; overflow:hidden; }
+    .th-fill  { height:100%; border-radius:2px; transition:width .4s; }
+    .th-reset { font-size:9px; color:var(--muted); margin-top:1px; }
+
     .bl-card { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:12px; margin-top:12px; }
     .bl-title { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
     .bl-list { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
@@ -436,6 +455,15 @@
             <span class="rl-val" id="rl-val">—</span>
           </div>
           <div class="rl-track"><div class="rl-fill" id="rl-fill" style="width:100%;background:var(--primary)"></div></div>
+        </div>
+
+        <!-- Token Health Dashboard -->
+        <div class="th-wrap" id="th-wrap" style="display:none">
+          <div class="th-label" onclick="toggleTokenHealth()">
+            <span>🔑 Token Health</span>
+            <span class="th-caret" id="th-caret">▶</span>
+          </div>
+          <div class="th-list" id="th-list" style="display:none"></div>
         </div>
 
         <!-- Auto-scan mini status -->
@@ -1029,7 +1057,7 @@ function toast(msg) { const e=document.getElementById('toast'); e.textContent=ms
 
 /* ── API ────────────────────────────────────────────────────────────────────── */
 async function fetchConfig() {
-  try { const r=await fetch('/api/github/config'); S.config=await r.json(); updateStatus(); } catch {}
+  try { const r=await fetch('/api/github/config'); S.config=await r.json(); updateStatus(); renderTokenHealth(); } catch {}
 }
 async function fetchRateLimit() {
   try {
@@ -1100,6 +1128,52 @@ function updateStatus() {
   $('txt-slack').textContent=slackOk?'Slack aktif':'Slack —';
   $('banner-no-token').style.display=tokOk?'none':'flex';
   $('btn-search').disabled=!tokOk;
+}
+
+/* ── Token Health Dashboard ─────────────────────────────────────────────────── */
+let _thOpen = false;
+function toggleTokenHealth() {
+  _thOpen = !_thOpen;
+  const list = document.getElementById('th-list');
+  const caret = document.getElementById('th-caret');
+  if (list) list.style.display = _thOpen ? 'flex' : 'none';
+  if (caret) caret.classList.toggle('open', _thOpen);
+}
+function renderTokenHealth() {
+  const cfg = S.config; if (!cfg) return;
+  const tokens = cfg.tokens;
+  const wrap = document.getElementById('th-wrap');
+  const list = document.getElementById('th-list');
+  if (!wrap || !list || !tokens || !tokens.length) { if (wrap) wrap.style.display='none'; return; }
+  wrap.style.display = 'block';
+  const now = Date.now();
+  list.innerHTML = tokens.map(t => {
+    const dead   = t.errors >= 3;
+    const pct    = dead ? 0 : Math.min(100, Math.round((t.remaining / 5000) * 100));
+    const fillClr = dead ? '#a855f7' : pct > 20 ? '#4ade80' : pct > 5 ? '#fbbf24' : '#f87171';
+    const badgeCls = dead ? 'th-dead' : pct > 20 ? 'th-ok' : pct > 5 ? 'th-warn' : 'th-low';
+    const badgeTxt = dead ? 'DEAD' : pct > 20 ? 'OK' : pct > 5 ? 'LOW' : 'CRIT';
+    let resetTxt = '';
+    if (!dead && t.resetAt) {
+      const diff = Math.max(0, t.resetAt * 1000 - now);
+      if (diff > 0) {
+        const m = Math.floor(diff / 60000), s = Math.floor((diff % 60000) / 1000);
+        resetTxt = `Reset ${m}m ${s}s`;
+      } else { resetTxt = 'Reset imminent'; }
+    }
+    return `<div class="th-row">
+      <div class="th-row-top">
+        <span class="th-suffix">${esc(t.suffix)}</span>
+        <div style="display:flex;align-items:center;gap:5px">
+          <span class="th-rem">${dead ? '⚠ '+t.errors+' err' : t.remaining+' / 5000'}</span>
+          <span class="th-badge ${badgeCls}">${badgeTxt}</span>
+        </div>
+      </div>
+      <div class="th-track"><div class="th-fill" style="width:${pct}%;background:${fillClr}"></div></div>
+      ${resetTxt ? `<div class="th-reset">⏱ ${resetTxt}</div>` : ''}
+    </div>`;
+  }).join('');
+  if (_thOpen) list.style.display = 'flex';
 }
 
 function updateAutoScanSidebar() {
