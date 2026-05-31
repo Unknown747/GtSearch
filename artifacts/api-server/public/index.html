@@ -293,6 +293,44 @@
     @media (max-width: 880px) { aside { display: none; } }
     .mobile-pills { display: none; }
     @media (max-width: 880px) { .mobile-pills { display: flex; } }
+    /* ── New features ── */
+    .age-select{background:var(--input);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;}
+    .ignore-btn{background:none;border:none;cursor:pointer;color:var(--muted);padding:2px 5px;border-radius:3px;font-size:14px;line-height:1;transition:color .15s;}
+    .ignore-btn:hover{color:var(--red);}
+    .dork-item-wrap{display:flex;align-items:center;gap:4px;}
+    .dork-item-wrap .dork-item{flex:1;}
+    .batch-cb{accent-color:var(--primary);cursor:pointer;flex-shrink:0;width:13px;height:13px;}
+    #batch-bar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--primary);border-radius:8px;padding:8px 16px;font-size:12px;color:var(--text);z-index:9998;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4);white-space:nowrap;}
+    .saved-hdr{font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;padding:10px 14px 4px;display:flex;align-items:center;justify-content:space-between;}
+    .saved-hdr-clr{background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px;}
+    .saved-hdr-clr:hover{color:var(--red);}
+    .saved-list{padding:0 8px 4px;display:flex;flex-direction:column;gap:2px;}
+    .saved-entry{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;cursor:pointer;font-size:11px;color:var(--text-sub);transition:background .15s;}
+    .saved-entry:hover{background:var(--input);color:var(--text);}
+    .saved-entry-lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .saved-del{background:none;border:none;color:transparent;cursor:pointer;font-size:12px;padding:0 2px;flex-shrink:0;}
+    .saved-entry:hover .saved-del{color:var(--muted);}
+    .saved-del:hover{color:var(--red)!important;}
+    .saved-empty{font-size:10px;color:var(--muted);padding:2px 14px 8px;}
+    #btn-builder{background:none;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer;transition:all .15s;}
+    #btn-builder:hover{border-color:var(--primary);color:var(--primary);}
+    #btn-save-q{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 4px;transition:color .15s;}
+    #btn-save-q:hover{color:var(--yellow);}
+    .builder-panel{background:var(--input);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-top:6px;display:none;flex-direction:column;gap:8px;}
+    .builder-panel.open{display:flex;}
+    .builder-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+    .builder-type,.builder-val{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 7px;font-size:11px;}
+    .builder-val{flex:1;min-width:80px;}
+    .builder-val::placeholder{color:var(--muted);}
+    .builder-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;line-height:1;padding:0 2px;}
+    .builder-del:hover{color:var(--red);}
+    .builder-preview{font-size:10px;color:var(--primary);font-family:monospace;word-break:break-all;background:rgba(0,0,0,.2);border-radius:4px;padding:5px 8px;}
+    .builder-footer{display:flex;gap:6px;align-items:center;}
+    .strict-row{display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);}
+    .strict-toggle{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:var(--red);border-radius:5px;padding:3px 10px;font-size:11px;cursor:pointer;transition:all .15s;}
+    .strict-toggle.on{background:rgba(239,68,68,.22);border-color:rgba(239,68,68,.5);font-weight:600;}
+    .strict-desc{font-size:10px;color:var(--muted);}
+    .batch-lbl{font-size:9px;color:var(--primary);background:rgba(99,102,241,.12);border-radius:3px;padding:1px 5px;margin-left:5px;font-weight:600;}
   </style>
 </head>
 <body>
@@ -350,6 +388,13 @@
         </div>
       </div>
 
+      <!-- Saved Searches -->
+      <div class="saved-hdr">
+        <span>⭐ Tersimpan</span>
+        <button class="saved-hdr-clr" onclick="clearAllSaved()" title="Hapus semua">Hapus semua</button>
+      </div>
+      <div class="saved-list" id="saved-list"><div class="saved-empty">Belum ada query tersimpan</div></div>
+
       <!-- Dork Library -->
       <div class="lib-label">Crypto Dork Library</div>
       <div id="dork-lib"></div>
@@ -375,13 +420,26 @@
         <label class="filter-chk" title="Exclude hasil dari repo fork — mengurangi duplikat secara signifikan"><input type="checkbox" id="f-no-fork" checked> <span>Exclude forks</span></label>
         <label class="filter-chk" title="Hanya repo yang di-push dalam 90 hari terakhir — hasil lebih fresh"><input type="checkbox" id="f-active" checked> <span>Recent (90d)</span></label>
         <label class="filter-chk" title="Tampilkan CRITICAL terlebih dahulu"><input type="checkbox" id="f-sort-sev" checked> <span>Sort: severity</span></label>
+        <label class="filter-chk" title="Maksimal 1 hasil per repo — hasil lebih beragam"><input type="checkbox" id="f-one-per-repo"> <span>1/repo</span></label>
+        <select class="age-select" id="f-age" title="Filter berdasarkan tahun repo dibuat">
+          <option value="">Usia: Semua</option>
+          <option value="2025">Dibuat 2025+</option>
+          <option value="2024">Dibuat 2024+</option>
+          <option value="2023">Dibuat 2023+</option>
+          <option value="2022">Dibuat 2022+</option>
+        </select>
       </div>
       <div class="mobile-pills" id="mobile-pills"></div>
       <div class="query-preview" id="q-preview" style="display:none">
         <span class="preview-zap">⚡</span>
         <span class="preview-text" id="q-preview-text"></span>
         <button class="copy-btn" id="btn-copy-q" title="Salin query">⎘</button>
+        <button id="btn-save-q" onclick="saveCurrentSearch()" title="Simpan query ini">⭐</button>
       </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:4px">
+        <button id="btn-builder" onclick="toggleBuilder()">🔧 Builder ▾</button>
+      </div>
+      <div class="builder-panel" id="builder-panel"></div>
     </div>
 
     <div id="content"></div>
@@ -425,6 +483,10 @@
         <button class="btn btn-outline" id="btn-run-now" onclick="runNow()">▶ Scan Sekarang</button>
         <button class="btn btn-primary" id="btn-toggle-as" onclick="toggleAutoScan()">—</button>
       </div>
+      <div class="strict-row">
+        <button class="strict-toggle" id="btn-strict" onclick="toggleStrictMode()">🎯 CRITICAL-Only</button>
+        <span class="strict-desc" id="strict-desc">Mode normal: simpan semua CRITICAL &amp; HIGH</span>
+      </div>
     </div>
 
     <!-- Query list -->
@@ -452,6 +514,11 @@
   </div>
 </div>
 
+<div id="batch-bar" style="display:none">
+  <span id="batch-count">0 dipilih</span>
+  <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="runBatch()">▶ Jalankan Semua</button>
+  <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="clearBatch()">✕ Batal</button>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -630,6 +697,7 @@ const S = {
   openCats: new Set(),
   sortBySev: true,
   seenUrls: new Set(),
+  ignoredUrls: new Set(JSON.parse(localStorage.getItem('gh_dork_ignored')||'[]')),
 };
 
 /* ── Severity (client-side — mirrors server-side classifier) ─────────────────── */
@@ -880,13 +948,17 @@ function renderDorkLib() {
   const pills=document.getElementById('mobile-pills');
   lib.innerHTML=DORKS.map((cat,ci)=>{
     const open=S.openCats.has(ci);
-    const items=cat.queries.map((d,di)=>`<button class="dork-item" data-ci="${ci}" data-di="${di}">${esc(d.label)}</button>`).join('');
+    const items=cat.queries.map((d,di)=>`<div class="dork-item-wrap"><input type="checkbox" class="batch-cb" data-ci="${ci}" data-di="${di}"><button class="dork-item" data-ci="${ci}" data-di="${di}">${esc(d.label)}</button></div>`).join('');
     return `<div><button class="cat-btn" data-ci="${ci}"><span style="font-size:12px;color:${cat.color};flex-shrink:0">${cat.icon}</span><span class="cat-name">${esc(cat.cat)}</span><span class="chevron${open?' open':''}">›</span></button><div class="dork-list${open?' open':''}" id="dl-${ci}">${items}</div></div>`;
   }).join('');
   pills.innerHTML=DORKS.flatMap((cat,ci)=>cat.queries.slice(0,2).map((d,di)=>`<button class="pill" data-ci="${ci}" data-di="${di}">${esc(d.label)}</button>`)).join('');
   lib.addEventListener('click',e=>{
     const cb=e.target.closest('.cat-btn'); if(cb){toggleCat(+cb.dataset.ci);return;}
+    if(e.target.classList.contains('batch-cb')) return;
     const db=e.target.closest('.dork-item'); if(db) pickDork(+db.dataset.ci,+db.dataset.di);
+  });
+  lib.addEventListener('change',e=>{
+    const cb=e.target.closest('.batch-cb'); if(cb) toggleBatch(+cb.dataset.ci,+cb.dataset.di,cb.checked);
   });
   pills.addEventListener('click',e=>{ const p=e.target.closest('.pill'); if(p) pickDork(+p.dataset.ci,+p.dataset.di); });
 }
@@ -910,6 +982,8 @@ function doSearch() {
     q+=` pushed:>${d.toISOString().slice(0,10)}`;
   }
   S.sortBySev=document.getElementById('f-sort-sev').checked;
+  const ageVal=document.getElementById('f-age').value;
+  if(ageVal) q+=` created:>${ageVal}-01-01`;
   S.seenUrls=new Set();
   S.activeQuery=q; S.page=1; runSearch();
 }
@@ -964,7 +1038,17 @@ function renderContent(data,error,loading) {
       const db=new Date(b.repository?.pushed_at||b.repository?.updated_at||0).getTime();
       return db-da;
     });
-    const deduped=items.filter(item=>!S.seenUrls.has(item.html_url||''));
+    const ignored=S.ignoredUrls;
+    const onePerRepo=document.getElementById('f-one-per-repo').checked;
+    const seenRepos=new Set();
+    const deduped=items.filter(item=>{
+      const u=item.html_url||'';
+      if(S.seenUrls.has(u)||ignored.has(u)) return false;
+      const rn=(item.repository||{}).full_name||'';
+      if(onePerRepo&&rn&&seenRepos.has(rn)) return false;
+      seenRepos.add(rn);
+      return true;
+    });
     deduped.forEach(item=>{
       S.seenUrls.add(item.html_url||'');
       const repo=item.repository||{};
@@ -976,12 +1060,15 @@ function renderContent(data,error,loading) {
       const pushed=repo.pushed_at?new Date(repo.pushed_at).toLocaleDateString('id-ID'):(repo.updated_at?new Date(repo.updated_at).toLocaleDateString('id-ID'):'—');
       const forkBadge=repo.fork?'<span class="repo-badge badge-fork">fork</span>':'';
       const archBadge=repo.archived?'<span class="repo-badge badge-arch">archived</span>':'';
-      html+=`<div class="result-card"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${esc(item.html_url||'#')}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a></div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span><span class="meta-item">📅 ${pushed}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="copy-btn" data-copy="${esc(item.html_url||'')}" title="Salin URL">⎘</button></div></div>${highlightSnippet(fragment,matches)}</div>`;
+      const batchLbl=item._batchLabel?`<span class="batch-lbl">${esc(item._batchLabel)}</span>`:'';
+      const fileUrl=esc(item.html_url||'');
+      html+=`<div class="result-card" data-url="${fileUrl}"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${fileUrl}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a>${batchLbl}</div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span><span class="meta-item">📅 ${pushed}</span></div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan hasil ini">✕</button><button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button></div></div>${highlightSnippet(fragment,matches)}</div>`;
     });
     if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
   }
   area.innerHTML=html;
   area.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>copyText(b.dataset.copy)));
+  area.querySelectorAll('[data-ignore]').forEach(b=>b.addEventListener('click',()=>ignoreUrl(b.dataset.ignore)));
 }
 
 /* ── Auto-Scan View ─────────────────────────────────────────────────────────── */
@@ -1005,6 +1092,13 @@ function renderAutoScan() {
   const btn=document.getElementById('btn-toggle-as');
   btn.textContent=as.enabled?'⏹ Stop':'▶ Aktifkan';
   btn.className='btn '+(as.enabled?'btn-danger':'btn-primary');
+  const strictBtn=document.getElementById('btn-strict');
+  const strictDesc=document.getElementById('strict-desc');
+  if(strictBtn){
+    strictBtn.className='strict-toggle'+(as.strictMode?' on':'');
+    strictBtn.textContent=as.strictMode?'🎯 CRITICAL-Only ✓':'🎯 CRITICAL-Only';
+  }
+  if(strictDesc) strictDesc.textContent=as.strictMode?'Mode strict: hanya temuan yang cocok dengan regex (nilai aktual terdeteksi)':'Mode normal: simpan semua CRITICAL & HIGH';
 
   // Sub text
   let sub='';
@@ -1068,10 +1162,164 @@ function showView(v) {
 /* ── Copy ───────────────────────────────────────────────────────────────────── */
 function copyText(t) { navigator.clipboard.writeText(t).then(()=>toast('Disalin ke clipboard.')).catch(()=>{}); }
 
+/* ── Ignored URLs ───────────────────────────────────────────────────────────── */
+function ignoreUrl(url) {
+  S.ignoredUrls.add(url);
+  localStorage.setItem('gh_dork_ignored',JSON.stringify([...S.ignoredUrls]));
+  const card=document.querySelector(`.result-card[data-url="${CSS.escape(url)}"]`);
+  if(card){card.style.opacity='0.25';card.style.pointerEvents='none';card.title='Diabaikan';}
+  toast('Hasil diabaikan — tidak akan muncul lagi.');
+}
+function clearIgnored(){S.ignoredUrls.clear();localStorage.removeItem('gh_dork_ignored');toast('Daftar abaikan dibersihkan.');}
+
+/* ── Saved Searches ──────────────────────────────────────────────────────────── */
+function loadSaved(){return JSON.parse(localStorage.getItem('gh_dork_saved')||'[]');}
+function saveCurrentSearch(){
+  if(!S.activeQuery){toast('Tidak ada query aktif.');return;}
+  const label=prompt('Nama untuk query ini:',S.activeQuery.slice(0,60));
+  if(!label)return;
+  const saved=loadSaved();
+  saved.unshift({label,query:S.activeQuery,ts:Date.now()});
+  if(saved.length>30)saved.length=30;
+  localStorage.setItem('gh_dork_saved',JSON.stringify(saved));
+  renderSaved();
+  toast('Query disimpan! ⭐');
+}
+function deleteSaved(i,e){
+  e.stopPropagation();
+  const saved=loadSaved();
+  saved.splice(i,1);
+  localStorage.setItem('gh_dork_saved',JSON.stringify(saved));
+  renderSaved();
+}
+function clearAllSaved(){
+  localStorage.removeItem('gh_dork_saved');
+  renderSaved();
+  toast('Semua saved searches dihapus.');
+}
+function renderSaved(){
+  const saved=loadSaved();
+  const list=document.getElementById('saved-list');
+  if(!list)return;
+  if(saved.length===0){list.innerHTML='<div class="saved-empty">Belum ada query tersimpan</div>';return;}
+  list.innerHTML=saved.map((s,i)=>`<div class="saved-entry" onclick="rerunSaved(${i})" title="${esc(s.query)}"><span>⭐</span><span class="saved-entry-lbl">${esc(s.label)}</span><button class="saved-del" onclick="deleteSaved(${i},event)" title="Hapus">✕</button></div>`).join('');
+}
+function rerunSaved(i){
+  const saved=loadSaved();
+  if(!saved[i])return;
+  document.getElementById('q-input').value=saved[i].query;
+  S.activeQuery=saved[i].query;
+  S.page=1;
+  S.seenUrls=new Set();
+  showView('search');
+  runSearch();
+}
+
+/* ── Batch ──────────────────────────────────────────────────────────────────── */
+const batchSelected=new Map();
+function toggleBatch(ci,di,checked){
+  const key=`${ci}-${di}`;
+  if(checked)batchSelected.set(key,DORKS[ci].queries[di]);
+  else batchSelected.delete(key);
+  updateBatchBar();
+}
+function updateBatchBar(){
+  const bar=document.getElementById('batch-bar');
+  const cnt=batchSelected.size;
+  bar.style.display=cnt?'flex':'none';
+  if(cnt)document.getElementById('batch-count').textContent=`${cnt} query dipilih`;
+}
+function clearBatch(){
+  batchSelected.clear();
+  document.querySelectorAll('.batch-cb:checked').forEach(cb=>{cb.checked=false;});
+  updateBatchBar();
+}
+async function runBatch(){
+  if(!batchSelected.size)return;
+  const queries=[...batchSelected.values()];
+  clearBatch();
+  showView('search');
+  S.seenUrls=new Set();
+  S.loading=true; renderContent(null,null,true);
+  const allItems=[];let totalCount=0;
+  const activeFilter=document.getElementById('f-active').checked;
+  const noFork=document.getElementById('f-no-fork').checked;
+  const ageVal=document.getElementById('f-age').value;
+  for(const {q,label} of queries){
+    try{
+      let qFull=q;
+      if(noFork) qFull+=' fork:false';
+      if(activeFilter){const d=new Date();d.setDate(d.getDate()-90);qFull+=` pushed:>${d.toISOString().slice(0,10)}`;}
+      if(ageVal) qFull+=` created:>${ageVal}-01-01`;
+      const r=await fetch(`/api/github/search?q=${encodeURIComponent(qFull)}&per_page=30&page=1`);
+      const data=await r.json();
+      if(r.ok&&data.items){data.items.forEach(item=>{item._batchLabel=label;});allItems.push(...data.items);totalCount+=data.total_count||0;}
+    }catch{}
+    await new Promise(r=>setTimeout(r,600));
+  }
+  S.loading=false;
+  S.activeQuery=`[Batch: ${queries.length} queries]`;
+  S.page=1;
+  document.getElementById('q-preview').style.display='flex';
+  document.getElementById('q-preview-text').textContent=S.activeQuery;
+  document.getElementById('btn-copy-q').onclick=()=>copyText(S.activeQuery);
+  saveHist(S.activeQuery,totalCount);
+  renderContent({items:allItems,total_count:totalCount},null,false);
+}
+
+/* ── Dork Builder ───────────────────────────────────────────────────────────── */
+let builderRows=[{type:'filename',value:''}];
+function toggleBuilder(){
+  const panel=document.getElementById('builder-panel');
+  const open=panel.classList.toggle('open');
+  document.getElementById('btn-builder').textContent=open?'🔧 Builder ▲':'🔧 Builder ▾';
+  if(open)renderBuilder();
+}
+function renderBuilder(){
+  const types=['filename','path','language','extension','keyword','OR keyword'];
+  const rowsHtml=builderRows.map((row,i)=>`<div class="builder-row"><select class="builder-type" onchange="builderSet(${i},'type',this.value)">${types.map(t=>`<option value="${t}"${row.type===t?' selected':''}>${t}</option>`).join('')}</select><input class="builder-val" placeholder="nilai..." value="${esc(row.value)}" oninput="builderSet(${i},'value',this.value)">${i>0?`<button class="builder-del" onclick="builderRemove(${i})">×</button>`:''}</div>`).join('');
+  const q=buildDorkQuery();
+  document.getElementById('builder-panel').innerHTML=`${rowsHtml}<div class="builder-preview">${esc(q||'(masukkan nilai…)')}</div><div class="builder-footer"><button class="btn btn-outline" style="font-size:10px;padding:3px 8px" onclick="builderAdd()">+ Tambah</button><button class="btn btn-primary" style="font-size:10px;padding:3px 8px" onclick="runBuilderQuery()">🔍 Cari</button></div>`;
+}
+function builderSet(i,f,v){builderRows[i][f]=v;renderBuilder();}
+function builderAdd(){builderRows.push({type:'keyword',value:''});renderBuilder();}
+function builderRemove(i){builderRows.splice(i,1);if(!builderRows.length)builderRows=[{type:'filename',value:''}];renderBuilder();}
+function buildDorkQuery(){
+  return builderRows.filter(r=>r.value.trim()).map(r=>{
+    const v=r.value.trim();
+    if(r.type==='filename')return`filename:${v}`;
+    if(r.type==='path')return`path:${v}`;
+    if(r.type==='language')return`language:${v}`;
+    if(r.type==='extension')return`extension:${v}`;
+    if(r.type==='OR keyword')return`OR "${v}"`;
+    return`"${v}"`;
+  }).join(' ');
+}
+function runBuilderQuery(){
+  const q=buildDorkQuery();
+  if(!q){toast('Masukkan nilai dulu.');return;}
+  document.getElementById('q-input').value=q;
+  const panel=document.getElementById('builder-panel');
+  panel.classList.remove('open');
+  document.getElementById('btn-builder').textContent='🔧 Builder ▾';
+  doSearch();
+}
+
+/* ── Auto-Scan Strict Mode ──────────────────────────────────────────────────── */
+async function toggleStrictMode(){
+  try{
+    const r=await fetch('/api/autoscan/strict',{method:'POST'});
+    const d=await r.json();
+    await fetchAutoScanStatus();
+    toast(d.strictMode?'Mode CRITICAL-Only aktif — hanya regex match yang disimpan.':'Mode strict dinonaktifkan.');
+  }catch{toast('Gagal mengubah mode strict.');}
+}
+
 /* ── Init ───────────────────────────────────────────────────────────────────── */
 (function init() {
   document.getElementById('q-input').addEventListener('keydown',e=>{ if(e.key==='Enter') doSearch(); });
   renderDorkLib();
+  renderSaved();
   fetchConfig();
   fetchRateLimit();
   fetchAutoScanStatus();

@@ -464,6 +464,7 @@ const autoScanState = {
   recentFindings: [] as AutoScanFinding[],
   totalNewFindings: 0,
   lastError: null as string | null,
+  strictMode: false,
   // mid-scan token rotation stats (reset each scan)
   tokenSwitches: 0,
   queriesCompleted: 0,
@@ -627,6 +628,11 @@ async function runAutoScan(): Promise<void> {
         const snippet = item.text_matches?.[0]?.fragment ?? "";
         const sev = severity(item.path, snippet);
         if (sev !== "CRITICAL" && sev !== "HIGH") continue;
+        // Strict mode: only regex-confirmed CRITICAL, skip keyword-only matches
+        if (autoScanState.strictMode && sev === "CRITICAL") {
+          const hasRegex = CRITICAL_REGEXES.some(re => re.test(item.path + " " + snippet));
+          if (!hasRegex) continue;
+        }
 
         const finding: AutoScanFinding = {
           ts: Date.now(),
@@ -907,6 +913,7 @@ router.get("/autoscan/status", (_req, res) => {
   res.json({
     enabled: autoScanState.enabled,
     running: autoScanState.running,
+    strictMode: autoScanState.strictMode,
     lastScan: autoScanState.lastScan,
     nextScan: autoScanState.nextScan,
     scanCount: autoScanState.scanCount,
@@ -923,6 +930,13 @@ router.get("/autoscan/status", (_req, res) => {
     },
     tokenPool: tokenPool.summary(),
   });
+});
+
+// ── POST /api/autoscan/strict ─────────────────────────────────────────────────
+router.post("/autoscan/strict", (_req, res) => {
+  autoScanState.strictMode = !autoScanState.strictMode;
+  logger.info({ strictMode: autoScanState.strictMode }, "Auto-scan strict mode toggled");
+  res.json({ strictMode: autoScanState.strictMode });
 });
 
 // ── POST /api/autoscan/toggle ─────────────────────────────────────────────────
