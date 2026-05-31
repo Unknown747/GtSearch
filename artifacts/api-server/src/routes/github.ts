@@ -3,27 +3,149 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
-// ── Token manager ─────────────────────────────────────────────────────────────
-function getTokens(): string[] {
-  const tokens: string[] = [];
-  const single = process.env["GITHUB_TOKEN"];
-  if (single) tokens.push(single);
-  for (let i = 1; i <= 20; i++) {
-    const t = process.env[`TOKEN_${i}`];
-    if (t) tokens.push(t);
-  }
-  return [...new Set(tokens)];
+// ── Token pool ─────────────────────────────────────────────────────────────────
+// Tracks per-token rate-limit state so we always pick the token with the most
+// remaining capacity and can wait intelligently when all tokens are exhausted.
+
+interface TokenState {
+  token: string;
+  remaining: number;   // requests left in current window (updated from headers)
+  resetAt: number;     // unix ms when the window resets (0 = unknown)
+  lastUsed: number;    // unix ms
+  requests: number;    // lifetime request count for this token
+  errors: number;      // 401/403 count
 }
 
-let _tokenIndex = 0;
-function pickToken(): string | null {
-  const tokens = getTokens();
-  if (!tokens.length) return null;
-  return tokens[_tokenIndex % tokens.length];
+class TokenPool {
+  private states: Map<string, TokenState> = new Map();
+
+  /** Rebuild pool from env vars — call before each use so new tokens are picked up. */
+  sync(): void {
+    const tokens: string[] = [];
+    const single = process.env["GITHUB_TOKEN"];
+    if (single) tokens.push(single);
+    for (let i = 1; i <= 20; i++) {
+      const t = process.env[`TOKEN_${i}`];
+      if (t) tokens.push(t);
+    }
+    const unique = [...new Set(tokens)];
+
+    // Add new tokens; leave existing states intact (preserve remaining/reset data)
+    for (const tok of unique) {
+      if (!this.states.has(tok)) {
+        this.states.set(tok, {
+          token: tok,
+          remaining: 30,  // conservative default before first response
+          resetAt: 0,
+          lastUsed: 0,
+          requests: 0,
+          errors: 0,
+        });
+      }
+    }
+
+    // Remove tokens that are no longer in env
+    for (const [tok] of this.states) {
+      if (!unique.includes(tok)) this.states.delete(tok);
+    }
+  }
+
+  get size(): number { return this.states.size; }
+
+  /**
+   * Pick the best available token:
+   * 1. Filter out tokens with errors >= 3 (treat as invalid).
+   * 2. Prefer tokens whose window hasn't reset yet but have remaining > 0.
+   * 3. Among eligible tokens, pick the one with the highest remaining count.
+   * 4. If all tokens are within an active window but at 0, return null so
+   *    the caller can wait for the earliest reset.
+   */
+  pick(): { token: string; state: TokenState } | null {
+    this.sync();
+    if (!this.states.size) return null;
+
+    const now = Date.now();
+    const candidates: TokenState[] = [];
+
+    for (const state of this.states.values()) {
+      if (state.errors >= 3) continue; // effectively dead token
+
+      // If the reset window has passed, reset the remaining count optimistically
+      if (state.resetAt > 0 && now >= state.resetAt) {
+        state.remaining = 30;
+        state.resetAt = 0;
+      }
+
+      if (state.remaining > 0) candidates.push(state);
+    }
+
+    if (!candidates.length) return null;
+
+    // Pick the token with the most capacity remaining
+    candidates.sort((a, b) => b.remaining - a.remaining);
+    const best = candidates[0];
+    return { token: best.token, state: best };
+  }
+
+  /**
+   * Update a token's rate-limit state from response headers.
+   * Returns the updated remaining count.
+   */
+  update(token: string, remaining: number, resetEpochSec: number | null): void {
+    const state = this.states.get(token);
+    if (!state) return;
+    state.remaining = remaining;
+    state.resetAt = resetEpochSec ? resetEpochSec * 1000 : state.resetAt;
+    state.lastUsed = Date.now();
+    state.requests++;
+  }
+
+  /** Mark a token as having produced an auth error. */
+  flagError(token: string): void {
+    const state = this.states.get(token);
+    if (state) state.errors++;
+  }
+
+  /**
+   * Returns the earliest reset timestamp (ms) across all exhausted tokens,
+   * or null if at least one token has remaining capacity.
+   */
+  earliestReset(): number | null {
+    const now = Date.now();
+    let earliest: number | null = null;
+
+    for (const state of this.states.values()) {
+      if (state.errors >= 3) continue;
+      if (state.remaining > 0) return null; // at least one is available
+      if (state.resetAt > now) {
+        if (earliest === null || state.resetAt < earliest) earliest = state.resetAt;
+      }
+    }
+    return earliest;
+  }
+
+  /** Summary for status endpoints (masks the actual token strings). */
+  summary(): Array<{
+    index: number;
+    suffix: string;
+    remaining: number;
+    resetAt: number | null;
+    requests: number;
+    errors: number;
+  }> {
+    let i = 0;
+    return [...this.states.values()].map((s) => ({
+      index: i++,
+      suffix: `...${s.token.slice(-4)}`,
+      remaining: s.remaining,
+      resetAt: s.resetAt || null,
+      requests: s.requests,
+      errors: s.errors,
+    }));
+  }
 }
-function rotateToken(): void {
-  _tokenIndex++;
-}
+
+const tokenPool = new TokenPool();
 
 // ── Severity classifier ───────────────────────────────────────────────────────
 function severity(filePath: string, snippet: string): "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" {
@@ -106,6 +228,7 @@ async function sendTelegram(query: string, findings: Finding[]): Promise<void> {
 
 // ── Auto-scan ─────────────────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const QUERY_DELAY_MS = 2000;             // polite pause between queries
 
 const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   { label: "mnemonic .env",          q: 'filename:.env "MNEMONIC"' },
@@ -143,6 +266,10 @@ const autoScanState = {
   recentFindings: [] as AutoScanFinding[],
   totalNewFindings: 0,
   lastError: null as string | null,
+  // mid-scan token rotation stats (reset each scan)
+  tokenSwitches: 0,
+  queriesCompleted: 0,
+  queriesSkipped: 0,
 };
 
 // Tracks file URLs we've already alerted on — survives for the life of the process
@@ -150,28 +277,93 @@ const seenFindings = new Set<string>();
 
 let scanTimer: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * Wait until the token pool has at least one token available.
+ * If the pool is exhausted, sleeps until the earliest reset window.
+ * Returns false if we timed out waiting (shouldn't normally happen).
+ */
+async function waitForAvailableToken(timeoutMs = 70 * 60 * 1000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const pick = tokenPool.pick();
+    if (pick) return true;
+
+    const earliest = tokenPool.earliestReset();
+    if (!earliest) {
+      // All tokens are dead (auth errors) — nothing to wait for
+      logger.error("All tokens are invalid (auth errors). Auto-scan aborted.");
+      return false;
+    }
+
+    const waitMs = Math.max(earliest - Date.now() + 5000, 5000); // 5s buffer after reset
+    const waitSec = Math.round(waitMs / 1000);
+    logger.warn(
+      { waitSec, resetAt: new Date(earliest).toISOString() },
+      `Auto-scan: all tokens exhausted — waiting ${waitSec}s for reset`
+    );
+
+    // Sleep in 30-second chunks so we don't over-sleep
+    const chunk = Math.min(waitMs, 30_000);
+    await new Promise<void>((r) => setTimeout(r, chunk));
+  }
+
+  return false; // timed out
+}
+
 async function runAutoScan(): Promise<void> {
   if (autoScanState.running) return;
-  if (!getTokens().length) {
+  tokenPool.sync();
+  if (!tokenPool.size) {
     logger.warn("Auto-scan skipped: no GitHub tokens configured");
     return;
   }
 
   autoScanState.running = true;
   autoScanState.lastError = null;
+  autoScanState.tokenSwitches = 0;
+  autoScanState.queriesCompleted = 0;
+  autoScanState.queriesSkipped = 0;
   const scanTs = Date.now();
   autoScanState.lastScan = scanTs;
   autoScanState.scanCount++;
-  logger.info({ scanCount: autoScanState.scanCount, queries: AUTO_SCAN_QUERIES.length }, "Auto-scan started");
+  logger.info(
+    { scanCount: autoScanState.scanCount, queries: AUTO_SCAN_QUERIES.length, tokens: tokenPool.size },
+    "Auto-scan started"
+  );
 
   const newFindings: AutoScanFinding[] = [];
+  let prevToken: string | null = null;
 
   for (const { label, q } of AUTO_SCAN_QUERIES) {
-    // Respect rate limits: 2-second pause between queries
-    await new Promise<void>((r) => setTimeout(r, 2000));
+    // Polite pause between queries
+    await new Promise<void>((r) => setTimeout(r, QUERY_DELAY_MS));
 
-    const token = pickToken();
-    if (!token) break;
+    // Pick the best available token (may need to wait for a rate-limit reset)
+    const available = await waitForAvailableToken();
+    if (!available) {
+      autoScanState.queriesSkipped++;
+      logger.error("Auto-scan: giving up waiting for a token — scan aborted early");
+      break;
+    }
+
+    const picked = tokenPool.pick();
+    if (!picked) {
+      autoScanState.queriesSkipped++;
+      continue;
+    }
+
+    const { token, state } = picked;
+
+    // Log token switches for observability
+    if (prevToken && prevToken !== token) {
+      autoScanState.tokenSwitches++;
+      logger.info(
+        { from: `...${prevToken.slice(-4)}`, to: `...${token.slice(-4)}`, label },
+        "Auto-scan: switched token mid-scan"
+      );
+    }
+    prevToken = token;
 
     try {
       const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=30&page=1`;
@@ -184,15 +376,33 @@ async function runAutoScan(): Promise<void> {
 
       const r = await fetch(url, { headers });
 
-      const remaining = parseInt(r.headers.get("x-ratelimit-remaining") ?? "999", 10);
-      if (remaining < 5) {
-        rotateToken();
-        logger.warn({ remaining }, "Auto-scan: rate limit low, rotated token");
+      // Update this token's rate-limit state from response headers
+      const remaining = parseInt(r.headers.get("x-ratelimit-remaining") ?? "-1", 10);
+      const resetEpoch = r.headers.get("x-ratelimit-reset");
+      const resetSec = resetEpoch ? parseInt(resetEpoch, 10) : null;
+
+      if (remaining >= 0) {
+        tokenPool.update(token, remaining, resetSec);
+        if (remaining < 5) {
+          logger.warn(
+            { remaining, token: `...${token.slice(-4)}`, label },
+            "Auto-scan: token nearly exhausted"
+          );
+        }
+      }
+
+      if (r.status === 401 || r.status === 403) {
+        tokenPool.flagError(token);
+        // Force remaining to 0 so this token isn't picked next
+        tokenPool.update(token, 0, resetSec);
+        logger.warn({ status: r.status, token: `...${token.slice(-4)}`, label }, "Auto-scan: token rejected, flagged");
+        autoScanState.queriesSkipped++;
+        continue;
       }
 
       if (!r.ok) {
-        if (r.status === 403 || r.status === 401) rotateToken();
         logger.warn({ status: r.status, q }, "Auto-scan query non-OK, skipping");
+        autoScanState.queriesSkipped++;
         continue;
       }
 
@@ -203,6 +413,12 @@ async function runAutoScan(): Promise<void> {
         text_matches?: Array<{ fragment: string }>;
       }
       const data = (await r.json()) as { items: GHItem[] };
+
+      autoScanState.queriesCompleted++;
+      logger.info(
+        { label, results: data.items?.length ?? 0, remaining: state.remaining, token: `...${token.slice(-4)}` },
+        "Auto-scan query done"
+      );
 
       for (const item of data.items ?? []) {
         if (seenFindings.has(item.html_url)) continue;
@@ -226,6 +442,7 @@ async function runAutoScan(): Promise<void> {
       }
     } catch (err) {
       logger.warn({ err, q }, "Auto-scan query error");
+      autoScanState.queriesSkipped++;
     }
   }
 
@@ -236,7 +453,13 @@ async function runAutoScan(): Promise<void> {
   autoScanState.nextScan = Date.now() + SCAN_INTERVAL_MS;
 
   logger.info(
-    { newFindings: newFindings.length, totalSeen: seenFindings.size },
+    {
+      newFindings: newFindings.length,
+      totalSeen: seenFindings.size,
+      queriesCompleted: autoScanState.queriesCompleted,
+      queriesSkipped: autoScanState.queriesSkipped,
+      tokenSwitches: autoScanState.tokenSwitches,
+    },
     "Auto-scan completed"
   );
 
@@ -307,27 +530,33 @@ startScanTimer();
 
 // ── GET /api/github/config ────────────────────────────────────────────────────
 router.get("/github/config", (_req, res) => {
-  const tokens = getTokens();
+  tokenPool.sync();
   res.json({
-    tokensConfigured: tokens.length,
+    tokensConfigured: tokenPool.size,
+    tokens: tokenPool.summary(),
     telegramConfigured: !!(process.env["TELEGRAM_BOT_TOKEN"] && process.env["TELEGRAM_CHAT_ID"]),
   });
 });
 
 // ── GET /api/github/rate-limit ────────────────────────────────────────────────
 router.get("/github/rate-limit", async (req, res) => {
-  const token = pickToken();
+  const picked = tokenPool.pick();
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "GH-Dork/2.0",
   };
-  if (token) headers["Authorization"] = `token ${token}`;
+  if (picked) headers["Authorization"] = `token ${picked.token}`;
 
   try {
     const r = await fetch("https://api.github.com/rate_limit", { headers });
+    if (picked) {
+      const remaining = parseInt(r.headers.get("x-ratelimit-remaining") ?? "-1", 10);
+      const resetEpoch = r.headers.get("x-ratelimit-reset");
+      if (remaining >= 0) tokenPool.update(picked.token, remaining, resetEpoch ? parseInt(resetEpoch, 10) : null);
+    }
     const data = (await r.json()) as Record<string, unknown>;
-    res.json(data);
+    res.json({ ...data, tokenPool: tokenPool.summary() });
   } catch (err) {
     req.log.error({ err }, "rate-limit fetch failed");
     res.status(502).json({ error: "GitHub unreachable" });
@@ -346,14 +575,20 @@ router.get("/github/search", async (req, res) => {
     return;
   }
 
-  const token = pickToken();
-  if (!token) {
+  const picked = tokenPool.pick();
+  if (!picked) {
+    const earliest = tokenPool.earliestReset();
     res.status(503).json({
-      error: "No GitHub token configured. Set GITHUB_TOKEN or TOKEN_1/TOKEN_2/... in Replit Secrets.",
+      error: "No GitHub token available.",
+      reason: tokenPool.size === 0
+        ? "No tokens configured. Set GITHUB_TOKEN or TOKEN_1/TOKEN_2/... in Replit Secrets."
+        : "All tokens are rate-limited.",
+      resetsAt: earliest ? new Date(earliest).toISOString() : null,
     });
     return;
   }
 
+  const { token } = picked;
   const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}`;
   const headers: Record<string, string> = {
     Authorization: `token ${token}`,
@@ -365,23 +600,22 @@ router.get("/github/search", async (req, res) => {
   try {
     const r = await fetch(url, { headers });
 
-    const remaining = parseInt(r.headers.get("x-ratelimit-remaining") ?? "999", 10);
-    if (remaining < 5) {
-      rotateToken();
-      req.log.warn({ remaining }, "Rate limit low, rotated token");
-    }
+    const remaining = parseInt(r.headers.get("x-ratelimit-remaining") ?? "-1", 10);
+    const resetEpoch = r.headers.get("x-ratelimit-reset");
+    const resetSec = resetEpoch ? parseInt(resetEpoch, 10) : null;
+    if (remaining >= 0) tokenPool.update(token, remaining, resetSec);
 
     if (r.status === 401) {
-      rotateToken();
+      tokenPool.flagError(token);
+      tokenPool.update(token, 0, resetSec);
       res.status(401).json({ error: "GitHub token invalid or expired. Check your secrets." });
       return;
     }
     if (r.status === 403) {
-      const resetEpoch = r.headers.get("x-ratelimit-reset");
-      const resetTime = resetEpoch
-        ? new Date(parseInt(resetEpoch, 10) * 1000).toLocaleTimeString()
+      tokenPool.update(token, 0, resetSec);
+      const resetTime = resetSec
+        ? new Date(resetSec * 1000).toISOString()
         : "unknown";
-      rotateToken();
       res.status(429).json({ error: `Rate limit exceeded. Resets at ${resetTime}.` });
       return;
     }
@@ -481,6 +715,13 @@ router.get("/autoscan/status", (_req, res) => {
     queriesCount: AUTO_SCAN_QUERIES.length,
     queries: AUTO_SCAN_QUERIES.map((q) => q.label),
     intervalMs: SCAN_INTERVAL_MS,
+    // Token rotation stats from the most recent scan
+    lastScanStats: {
+      queriesCompleted: autoScanState.queriesCompleted,
+      queriesSkipped: autoScanState.queriesSkipped,
+      tokenSwitches: autoScanState.tokenSwitches,
+    },
+    tokenPool: tokenPool.summary(),
   });
 });
 
@@ -502,7 +743,8 @@ router.post("/autoscan/run-now", (req, res) => {
     res.json({ ok: false, message: "Scan sudah berjalan." });
     return;
   }
-  if (!getTokens().length) {
+  tokenPool.sync();
+  if (!tokenPool.size) {
     res.status(503).json({ error: "No GitHub token configured." });
     return;
   }
