@@ -1,4 +1,8 @@
 import { Router } from "express";
+import fs from "fs";
+import path from "path";
+import { createHash } from "crypto";
+import { fileURLToPath } from "url";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -146,6 +150,43 @@ class TokenPool {
 }
 
 const tokenPool = new TokenPool();
+
+// ── Data directory (outside dist/ so it survives rebuilds) ────────────────────
+const _moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = path.resolve(_moduleDir, "..", "data");
+const FINDINGS_FILE = path.resolve(DATA_DIR, "findings.json");
+const CUSTOM_QUERIES_FILE = path.resolve(DATA_DIR, "custom-queries.json");
+
+function ensureDataDir(): void {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+}
+
+// Content fingerprint for hash-based dedup: same URL + changed snippet = new finding
+function findingKey(url: string, snippet: string): string {
+  const fp = createHash("md5").update(snippet.slice(0, 200)).digest("hex").slice(0, 12);
+  return `${url}|${fp}`;
+}
+
+// ── Search endpoint rate limiter (10 req/min per IP) ─────────────────────────
+const _rlMap = new Map<string, { count: number; ts: number }>();
+const RL_MAX = 10;
+const RL_WINDOW_MS = 60_000;
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = _rlMap.get(ip);
+  if (!entry || now - entry.ts > RL_WINDOW_MS) {
+    _rlMap.set(ip, { count: 1, ts: now });
+    return true;
+  }
+  if (entry.count >= RL_MAX) return false;
+  entry.count++;
+  return true;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, e] of _rlMap) if (now - e.ts > RL_WINDOW_MS * 2) _rlMap.delete(ip);
+}, 5 * 60_000).unref?.();
 
 // ── HTML escaper for Telegram messages ───────────────────────────────────────
 // Telegram's HTML mode only supports a narrow subset of tags. Repo names,
@@ -343,6 +384,7 @@ async function sendTelegram(query: string, findings: Finding[]): Promise<void> {
 
 // ── Auto-scan ─────────────────────────────────────────────────────────────────
 let currentScanIntervalMs = 30 * 60 * 1000; // 30 min default — always scan fresh
+let currentScanWindowDays = 14; // rolling window for pushed: filter (days)
 // Adaptive delay: ~1.5 s base; increases when remaining tokens are low
 const BASE_QUERY_DELAY_MS = 1500;
 
@@ -491,20 +533,80 @@ const autoScanState = {
   queriesSkipped: 0,
 };
 
-// Tracks file URLs we've already alerted on.
-// Cleared every 7 days so re-committed files with new credentials get re-detected.
+// Tracks finding keys (url|contenthash) — cleared every 7 days so updated files
+// with new credentials are re-detected even if the URL was seen before.
 const seenFindings = new Set<string>();
 let seenFindingsCreatedAt = Date.now();
-const SEEN_FINDINGS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const SEEN_FINDINGS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function maybeClearSeenFindings(): void {
   if (Date.now() - seenFindingsCreatedAt > SEEN_FINDINGS_TTL_MS) {
     const prev = seenFindings.size;
     seenFindings.clear();
     seenFindingsCreatedAt = Date.now();
-    logger.info({ cleared: prev }, "seenFindings reset after 7 days — re-scanning known URLs");
+    saveFindings();
+    logger.info({ cleared: prev }, "seenFindings reset after 7 days");
   }
 }
+
+// ── Persistence: findings survive server restarts ─────────────────────────────
+interface PersistedState {
+  recentFindings: AutoScanFinding[];
+  seenKeys: string[];
+  seenCreatedAt: number;
+}
+
+function loadPersistedFindings(): void {
+  try {
+    ensureDataDir();
+    const raw = fs.readFileSync(FINDINGS_FILE, "utf-8");
+    const saved = JSON.parse(raw) as PersistedState;
+    autoScanState.recentFindings = saved.recentFindings ?? [];
+    if (Date.now() - (saved.seenCreatedAt ?? 0) < SEEN_FINDINGS_TTL_MS) {
+      for (const k of saved.seenKeys ?? []) seenFindings.add(k);
+      seenFindingsCreatedAt = saved.seenCreatedAt ?? Date.now();
+    }
+    logger.info({ findings: autoScanState.recentFindings.length, seenKeys: seenFindings.size }, "Persisted findings loaded");
+  } catch { /* no saved state yet — start fresh */ }
+}
+
+function saveFindings(): void {
+  try {
+    ensureDataDir();
+    const state: PersistedState = {
+      recentFindings: autoScanState.recentFindings,
+      seenKeys: [...seenFindings],
+      seenCreatedAt: seenFindingsCreatedAt,
+    };
+    fs.writeFileSync(FINDINGS_FILE, JSON.stringify(state));
+  } catch (err) { logger.warn({ err }, "Failed to save findings to disk"); }
+}
+
+// ── Custom queries (file-backed, survives restarts) ────────────────────────────
+let customQueries: Array<{ label: string; q: string }> = [];
+
+function loadCustomQueries(): void {
+  try {
+    ensureDataDir();
+    const raw = fs.readFileSync(CUSTOM_QUERIES_FILE, "utf-8");
+    const parsed = JSON.parse(raw) as Array<{ label: string; q: string }>;
+    customQueries = Array.isArray(parsed) ? parsed : [];
+    if (customQueries.length) logger.info({ count: customQueries.length }, "Custom queries loaded");
+  } catch { customQueries = []; }
+}
+
+function saveCustomQueries(): void {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(CUSTOM_QUERIES_FILE, JSON.stringify(customQueries, null, 2));
+  } catch (err) { logger.warn({ err }, "Failed to save custom queries"); }
+}
+
+function getAllQueries(): Array<{ label: string; q: string }> {
+  return [...AUTO_SCAN_QUERIES, ...customQueries];
+}
+
+loadCustomQueries();
 
 let scanTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -560,14 +662,14 @@ async function runAutoScan(): Promise<void> {
   autoScanState.lastScan = scanTs;
   autoScanState.scanCount++;
   logger.info(
-    { scanCount: autoScanState.scanCount, queries: AUTO_SCAN_QUERIES.length, tokens: tokenPool.size },
+    { scanCount: autoScanState.scanCount, queries: getAllQueries().length, tokens: tokenPool.size, windowDays: currentScanWindowDays },
     "Auto-scan started"
   );
 
   const newFindings: AutoScanFinding[] = [];
   let prevToken: string | null = null;
 
-  for (const { label, q } of AUTO_SCAN_QUERIES) {
+  for (const { label, q } of getAllQueries()) {
     // Polite pause between queries
     await new Promise<void>((r) => setTimeout(r, queryDelayMs()));
 
@@ -598,7 +700,7 @@ async function runAutoScan(): Promise<void> {
     prevToken = token;
 
     try {
-      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14);
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - currentScanWindowDays);
       const rollingDate = cutoff.toISOString().slice(0, 10);
       const url = `https://api.github.com/search/code?q=${encodeURIComponent(q + ` fork:false pushed:>${rollingDate}`)}&per_page=30&page=1&sort=indexed&order=desc`;
       const headers: Record<string, string> = {
@@ -654,37 +756,57 @@ async function runAutoScan(): Promise<void> {
         "Auto-scan query done"
       );
 
-      for (const item of data.items ?? []) {
-        if (seenFindings.has(item.html_url)) continue;
+      const processPage = (items: GHItem[]) => {
+        for (const item of items) {
+          const snippet = item.text_matches?.[0]?.fragment ?? "";
+          const key = findingKey(item.html_url, snippet);
+          if (seenFindings.has(key)) continue;
 
-        const snippet = item.text_matches?.[0]?.fragment ?? "";
-        const sev = severity(item.path, snippet);
+          const sev = severity(item.path, snippet);
+          // Only track CRITICAL/HIGH — LOW/MEDIUM might later contain real secrets
+          if (sev !== "CRITICAL" && sev !== "HIGH") continue;
+          seenFindings.add(key);
 
-        // Only track CRITICAL/HIGH in seenFindings — LOW/MEDIUM files might be
-        // updated later to contain real secrets and should be re-checked.
-        if (sev !== "CRITICAL" && sev !== "HIGH") continue;
-        seenFindings.add(item.html_url);
+          // Strict mode: CRITICAL-Only — skip HIGH; skip CRITICAL without regex match
+          if (autoScanState.strictMode) {
+            if (sev !== "CRITICAL") continue;
+            const hasRegex = CRITICAL_REGEXES.some(re => re.test(item.path + " " + snippet));
+            if (!hasRegex) continue;
+          }
 
-        // Strict mode (CRITICAL-Only): skip HIGH entirely, and skip CRITICAL that
-        // only matched via keyword — require an actual regex pattern match (real value).
-        if (autoScanState.strictMode) {
-          if (sev !== "CRITICAL") continue;
-          const hasRegex = CRITICAL_REGEXES.some(re => re.test(item.path + " " + snippet));
-          if (!hasRegex) continue;
+          const finding: AutoScanFinding = {
+            ts: Date.now(),
+            severity: sev,
+            repo: item.repository.full_name,
+            path: item.path,
+            fileUrl: item.html_url,
+            query: q,
+            queryLabel: label,
+          };
+          newFindings.push(finding);
+          autoScanState.recentFindings.unshift(finding);
+          autoScanState.queryHits[label] = (autoScanState.queryHits[label] ?? 0) + 1;
         }
+      };
 
-        const finding: AutoScanFinding = {
-          ts: Date.now(),
-          severity: sev,
-          repo: item.repository.full_name,
-          path: item.path,
-          fileUrl: item.html_url,
-          query: q,
-          queryLabel: label,
-        };
-        newFindings.push(finding);
-        autoScanState.recentFindings.unshift(finding);
-        autoScanState.queryHits[label] = (autoScanState.queryHits[label] ?? 0) + 1;
+      processPage(data.items ?? []);
+
+      // Page 2: if page 1 was full (30 results) and we still have token capacity
+      if ((data.items?.length ?? 0) >= 30 && state.remaining > 5) {
+        try {
+          const url2 = url.replace("page=1", "page=2");
+          const r2 = await fetch(url2, { headers });
+          const rem2 = parseInt(r2.headers.get("x-ratelimit-remaining") ?? "-1", 10);
+          const rst2 = r2.headers.get("x-ratelimit-reset");
+          if (rem2 >= 0) tokenPool.update(token, rem2, rst2 ? parseInt(rst2, 10) : null);
+          if (r2.ok) {
+            const data2 = (await r2.json()) as { items: GHItem[] };
+            processPage(data2.items ?? []);
+            logger.info({ label, p2: data2.items?.length ?? 0 }, "Auto-scan page 2 fetched");
+          }
+        } catch (p2err) {
+          logger.warn({ err: p2err, q }, "Auto-scan page 2 error (non-fatal)");
+        }
       }
     } catch (err) {
       logger.warn({ err, q }, "Auto-scan query error");
@@ -692,11 +814,12 @@ async function runAutoScan(): Promise<void> {
     }
   }
 
-  // Keep only the last 100 findings in memory
+  // Keep only the last 100 findings in memory, then persist to disk
   autoScanState.recentFindings = autoScanState.recentFindings.slice(0, 100);
   autoScanState.totalNewFindings += newFindings.length;
   autoScanState.running = false;
   autoScanState.nextScan = Date.now() + currentScanIntervalMs;
+  saveFindings();
 
   logger.info(
     {
@@ -771,7 +894,8 @@ function stopScanTimer(): void {
   logger.info("Auto-scan timer stopped");
 }
 
-// Start immediately when the module loads
+// Load persisted state then start the timer
+loadPersistedFindings();
 startScanTimer();
 
 // ── GET /api/github/config ────────────────────────────────────────────────────
@@ -818,6 +942,14 @@ router.get("/github/search", async (req, res) => {
 
   if (!q || !q.trim()) {
     res.status(400).json({ error: "Missing query parameter q" });
+    return;
+  }
+
+  const clientIp =
+    ((req.headers["x-forwarded-for"] as string | undefined) ?? "").split(",")[0].trim() ||
+    (req.socket?.remoteAddress ?? "unknown");
+  if (!checkRateLimit(clientIp)) {
+    res.status(429).json({ error: "Rate limit exceeded. Max 10 requests/minute.", retryAfter: 60 });
     return;
   }
 
@@ -976,8 +1108,12 @@ router.get("/autoscan/status", (_req, res) => {
     totalNewFindings: autoScanState.totalNewFindings,
     recentFindings: autoScanState.recentFindings,
     queryHits: autoScanState.queryHits,
-    queriesCount: AUTO_SCAN_QUERIES.length,
-    queries: AUTO_SCAN_QUERIES.map((q) => q.label),
+    windowDays: currentScanWindowDays,
+    builtinQueriesCount: AUTO_SCAN_QUERIES.length,
+    customQueriesCount: customQueries.length,
+    customQueryList: customQueries,
+    queriesCount: getAllQueries().length,
+    queries: getAllQueries().map((q) => q.label),
     intervalMs: currentScanIntervalMs,
     // Token rotation stats from the most recent scan
     lastScanStats: {
@@ -1001,6 +1137,50 @@ router.post("/autoscan/interval", (req, res) => {
   if (autoScanState.enabled) startScanTimer();
   logger.info({ intervalMs: currentScanIntervalMs, minutes }, "Auto-scan interval updated");
   res.json({ intervalMs: currentScanIntervalMs, minutes });
+});
+
+// ── POST /api/autoscan/window ─────────────────────────────────────────────────
+router.post("/autoscan/window", (req, res) => {
+  const days = parseInt(String(req.query["days"] ?? ""), 10);
+  const allowed = [7, 14, 30];
+  if (!Number.isFinite(days) || !allowed.includes(days)) {
+    res.status(400).json({ error: `days must be one of: ${allowed.join(", ")}` });
+    return;
+  }
+  currentScanWindowDays = days;
+  logger.info({ days }, "Auto-scan window updated");
+  res.json({ windowDays: currentScanWindowDays });
+});
+
+// ── GET /api/autoscan/custom-queries ─────────────────────────────────────────
+router.get("/autoscan/custom-queries", (_req, res) => {
+  res.json({ queries: customQueries });
+});
+
+// ── POST /api/autoscan/custom-queries ─────────────────────────────────────────
+router.post("/autoscan/custom-queries", (req, res) => {
+  const { label, q } = req.body as { label?: string; q?: string };
+  if (!label?.trim() || !q?.trim()) {
+    res.status(400).json({ error: "Both label and q are required" });
+    return;
+  }
+  customQueries.push({ label: label.trim(), q: q.trim() });
+  saveCustomQueries();
+  logger.info({ label, q }, "Custom query added");
+  res.status(201).json({ queries: customQueries });
+});
+
+// ── DELETE /api/autoscan/custom-queries/:index ────────────────────────────────
+router.delete("/autoscan/custom-queries/:index", (req, res) => {
+  const idx = parseInt(req.params["index"] ?? "", 10);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= customQueries.length) {
+    res.status(400).json({ error: "Invalid index" });
+    return;
+  }
+  const removed = customQueries.splice(idx, 1)[0];
+  saveCustomQueries();
+  logger.info({ removed }, "Custom query removed");
+  res.json({ queries: customQueries });
 });
 
 // ── POST /api/autoscan/strict ─────────────────────────────────────────────────

@@ -535,12 +535,37 @@
           <option value="360">6 jam</option>
         </select>
       </div>
+      <div class="interval-row">
+        <span class="interval-label">📅 Window cari:</span>
+        <select class="interval-select" id="window-select" onchange="changeWindow(+this.value)">
+          <option value="7">7 hari</option>
+          <option value="14" selected>14 hari</option>
+          <option value="30">30 hari</option>
+        </select>
+      </div>
     </div>
 
     <!-- Query list -->
     <div class="as-queries-card">
       <div class="as-queries-title">Dork Queries yang Dimonitor</div>
       <div class="as-queries-grid" id="as-queries-list"></div>
+    </div>
+
+    <!-- Custom queries -->
+    <div class="as-queries-card" style="margin-top:12px">
+      <div class="as-queries-title">➕ Custom Queries <span class="cnt-badge" id="custom-q-cnt"></span></div>
+      <div id="custom-queries-list" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:110px">
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Label</div>
+          <input id="cq-label" class="q-input" placeholder="cth: MY_SECRET .env" style="width:100%;font-size:12px;padding:5px 8px;box-sizing:border-box">
+        </div>
+        <div style="flex:2;min-width:180px">
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Query GitHub</div>
+          <input id="cq-query" class="q-input" placeholder='filename:.env "MY_SECRET"' style="width:100%;font-size:12px;padding:5px 8px;box-sizing:border-box">
+        </div>
+        <button class="btn btn-primary" style="font-size:11px;padding:5px 12px;white-space:nowrap;flex-shrink:0" onclick="addCustomQuery()">+ Tambah</button>
+      </div>
     </div>
 
     <!-- Leaderboard -->
@@ -1195,9 +1220,15 @@ function renderAutoScan() {
   document.getElementById('as-stat-queries').textContent=as.queriesCount||0;
   const iMins=as.intervalMs?Math.round(as.intervalMs/60000):30;
   document.getElementById('as-stat-interval').textContent=iMins>=60?`${iMins/60}j`:`${iMins}m`;
-  // Sync interval select
+  // Sync interval + window selects
   const iSel=document.getElementById('interval-select');
   if(iSel&&as.intervalMs){const m=Math.round(as.intervalMs/60000);if([15,30,60,120,360].includes(m))iSel.value=String(m);}
+  const wSel=document.getElementById('window-select');
+  if(wSel&&as.windowDays&&[7,14,30].includes(as.windowDays))wSel.value=String(as.windowDays);
+  // Custom queries count badge
+  const cqCnt=document.getElementById('custom-q-cnt');
+  if(cqCnt) cqCnt.textContent=as.customQueriesCount?String(as.customQueriesCount):'';
+  renderCustomQueries(as.customQueryList||[]);
 
   // Pill & running dot
   const pill=document.getElementById('as-pill');
@@ -1505,13 +1536,70 @@ function closePreview() {
   document.body.style.overflow='';
 }
 
-/* ── Interval Configurator ──────────────────────────────────────────────────── */
+/* ── Interval & Window Configurator ─────────────────────────────────────────── */
 async function changeInterval(minutes) {
   try {
     const r=await fetch(`/api/autoscan/interval?minutes=${minutes}`,{method:'POST'});
     const d=await r.json();
     if(r.ok){ toast(`Interval scan diubah ke ${minutes} menit ✓`); await fetchAutoScanStatus(); }
     else toast(d.error||'Gagal mengubah interval.');
+  } catch{ toast('Gagal menghubungi server.'); }
+}
+
+async function changeWindow(days) {
+  try {
+    const r=await fetch(`/api/autoscan/window?days=${days}`,{method:'POST'});
+    const d=await r.json();
+    if(r.ok){ toast(`Window cari diubah ke ${days} hari ✓`); await fetchAutoScanStatus(); }
+    else toast(d.error||'Gagal mengubah window.');
+  } catch{ toast('Gagal menghubungi server.'); }
+}
+
+/* ── Custom Queries ──────────────────────────────────────────────────────────── */
+function renderCustomQueries(queries) {
+  const el=document.getElementById('custom-queries-list');
+  if(!el) return;
+  if(!queries||!queries.length){
+    el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:4px 0">Belum ada custom query. Tambah di bawah.</div>';
+    return;
+  }
+  el.innerHTML=queries.map((q,i)=>
+    `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <span style="font-size:11px;font-weight:600;color:var(--fg)">${esc(q.label)}</span>
+        <span style="font-size:10px;color:var(--muted);margin-left:6px">${esc(q.q)}</span>
+      </div>
+      <button class="btn btn-danger" style="font-size:10px;padding:2px 8px;flex-shrink:0" onclick="removeCustomQuery(${i})" title="Hapus query ini">✕</button>
+    </div>`
+  ).join('');
+}
+
+async function addCustomQuery() {
+  const label=(document.getElementById('cq-label').value||'').trim();
+  const q=(document.getElementById('cq-query').value||'').trim();
+  if(!label||!q){ toast('Label dan query harus diisi.'); return; }
+  try {
+    const r=await fetch('/api/autoscan/custom-queries',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({label,q})
+    });
+    const d=await r.json();
+    if(r.ok){
+      document.getElementById('cq-label').value='';
+      document.getElementById('cq-query').value='';
+      toast(`Custom query "${label}" ditambahkan ✓`);
+      await fetchAutoScanStatus();
+    } else toast(d.error||'Gagal menambah query.');
+  } catch{ toast('Gagal menghubungi server.'); }
+}
+
+async function removeCustomQuery(idx) {
+  try {
+    const r=await fetch(`/api/autoscan/custom-queries/${idx}`,{method:'DELETE'});
+    const d=await r.json();
+    if(r.ok){ toast('Custom query dihapus.'); await fetchAutoScanStatus(); }
+    else toast(d.error||'Gagal menghapus query.');
   } catch{ toast('Gagal menghubungi server.'); }
 }
 
