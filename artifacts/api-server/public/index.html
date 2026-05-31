@@ -1127,7 +1127,7 @@ function renderContent(data,error,loading) {
   const sortLabel=S.sortBySev?'<span class="sort-badge">↑ severity</span>':'';
   let html=`<div class="results-meta"><span><span class="count-hi">${totalCount.toLocaleString()}</span> hasil ditemukan${totalCount>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>${sortLabel}Hal. ${S.page} / ${totalPages||1}</span></div>`;
   if(totalCount>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Notifikasi CRITICAL/HIGH otomatis dikirim ke Telegram</div>`;
-  if(totalCount>0){const cutoff=document.getElementById('f-active').checked?(()=>{const d=new Date();d.setDate(d.getDate()-90);return ' · Filter: 90 hari terakhir';})():'';html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman. Diurutkan: severity → terbaru${cutoff}.</div>`;}
+  if(totalCount>0){const cutoff=document.getElementById('f-active').checked?' · Filter: 30 hari terakhir':'';html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman. Diurutkan: severity → terbaru${cutoff}.</div>`;}
   if(!data.items||data.items.length===0) {
     html+=`<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil</div><div class="empty-sub">Coba query berbeda atau hapus filter (Exclude forks / Active)</div></div>`;
   } else {
@@ -1330,11 +1330,10 @@ function rerunSaved(i){
   const saved=loadSaved();
   if(!saved[i])return;
   document.getElementById('q-input').value=saved[i].query;
-  S.activeQuery=saved[i].query;
   S.page=1;
   S.seenUrls=new Set();
   showView('search');
-  runSearch();
+  doSearch();
 }
 
 /* ── Batch ──────────────────────────────────────────────────────────────────── */
@@ -1371,7 +1370,7 @@ async function runBatch(){
     try{
       let qFull=q;
       if(noFork) qFull+=' fork:false';
-      if(activeFilter){const d=new Date();d.setDate(d.getDate()-90);qFull+=` pushed:>${d.toISOString().slice(0,10)}`;}
+      if(activeFilter){const d=new Date();d.setDate(d.getDate()-30);qFull+=` pushed:>${d.toISOString().slice(0,10)}`;}
       if(ageVal) qFull+=` created:>${ageVal}-01-01`;
       const r=await fetch(`/api/github/search?q=${encodeURIComponent(qFull)}&per_page=30&page=1`);
       const data=await r.json();

@@ -656,13 +656,19 @@ async function runAutoScan(): Promise<void> {
 
       for (const item of data.items ?? []) {
         if (seenFindings.has(item.html_url)) continue;
-        seenFindings.add(item.html_url);
 
         const snippet = item.text_matches?.[0]?.fragment ?? "";
         const sev = severity(item.path, snippet);
+
+        // Only track CRITICAL/HIGH in seenFindings — LOW/MEDIUM files might be
+        // updated later to contain real secrets and should be re-checked.
         if (sev !== "CRITICAL" && sev !== "HIGH") continue;
-        // Strict mode: only regex-confirmed CRITICAL, skip keyword-only matches
-        if (autoScanState.strictMode && sev === "CRITICAL") {
+        seenFindings.add(item.html_url);
+
+        // Strict mode (CRITICAL-Only): skip HIGH entirely, and skip CRITICAL that
+        // only matched via keyword — require an actual regex pattern match (real value).
+        if (autoScanState.strictMode) {
+          if (sev !== "CRITICAL") continue;
           const hasRegex = CRITICAL_REGEXES.some(re => re.test(item.path + " " + snippet));
           if (!hasRegex) continue;
         }
@@ -886,7 +892,7 @@ router.get("/github/search", async (req, res) => {
         name: string;
         path: string;
         html_url: string;
-        repository: { full_name: string; html_url: string; stargazers_count: number; updated_at: string };
+        repository: { full_name: string; html_url: string; stargazers_count: number; pushed_at: string; updated_at: string; fork: boolean; archived: boolean };
         text_matches?: Array<{ fragment: string }>;
       }>;
     }
