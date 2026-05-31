@@ -285,6 +285,52 @@ function isPlaceholderValue(snippet: string): boolean {
 }
 
 /**
+ * Extracts and censors the detected secret value from a snippet.
+ * Returns a string like "ETH Key: 0xABCD...ef12" or "Mnemonic: word1 word2 ... wordN [12 words]".
+ * Returns empty string if no recognisable value is found.
+ */
+function extractValuePreview(snippet: string, _filePath: string): string {
+  // 1. Regex-confirmed key formats — censor middle, keep prefix + last 4
+  const patterns: Array<{ re: RegExp; label: string; censor: (m: string) => string }> = [
+    { re: /AKIA[0-9A-Z]{16}/,               label: "AWS Key",    censor: m => m.slice(0, 8)  + "..." + m.slice(-4) },
+    { re: /0x[0-9a-fA-F]{64}/,              label: "ETH Key",    censor: m => m.slice(0, 6)  + "..." + m.slice(-4) },
+    { re: /\b[0-9a-fA-F]{64}\b/,            label: "Hex Key",    censor: m => m.slice(0, 4)  + "..." + m.slice(-4) },
+    { re: /ghp_[A-Za-z0-9]{36}/,            label: "GH Token",   censor: m => m.slice(0, 8)  + "..." + m.slice(-4) },
+    { re: /github_pat_[A-Za-z0-9_]{82}/,    label: "GH Token",   censor: m => m.slice(0, 14) + "..." + m.slice(-4) },
+    { re: /xprv[A-Za-z0-9]{107}/,           label: "xprv",       censor: m => m.slice(0, 8)  + "..." + m.slice(-4) },
+    { re: /zprv[A-Za-z0-9]{107}/,           label: "zprv",       censor: m => m.slice(0, 8)  + "..." + m.slice(-4) },
+    { re: /ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}/, label: "NEAR Key", censor: m => m.slice(0, 12) + "..." + m.slice(-4) },
+    { re: /[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/, label: "BTC WIF",  censor: m => m.slice(0, 4)  + "..." + m.slice(-4) },
+    { re: /\b[1-9A-HJ-NP-Za-km-z]{87,88}\b/, label: "Solana Key", censor: m => m.slice(0, 4) + "..." + m.slice(-4) },
+  ];
+  for (const { re, label, censor } of patterns) {
+    const m = snippet.match(re);
+    if (m) return `${label}: ${censor(m[0])}`;
+  }
+
+  // 2. Mnemonic phrase — 12 or 24 lowercase words separated by spaces
+  const mnemonicM = snippet.match(/\b([a-z]{3,10}(?:[ \t]+[a-z]{3,10}){11,23})\b/);
+  if (mnemonicM) {
+    const words = mnemonicM[1].trim().split(/\s+/);
+    if (words.length >= 12) {
+      return `Mnemonic: ${words[0]} ${words[1]} ... ${words[words.length - 1]} [${words.length} words]`;
+    }
+  }
+
+  // 3. Assignment pattern — KEY = "value" or KEY: 'value'
+  const assignM = snippet.match(
+    /(?:private_?key|mnemonic|seed(?:_phrase)?|secret|password|api_?(?:key|secret)|token)\s*[=:]\s*["']?([^\s"'#,;|\n\\]{8,})/i
+  );
+  if (assignM) {
+    const val = assignM[1].replace(/["',;)]+$/, "");
+    if (val.length <= 8) return val.slice(0, 2) + "***" + val.slice(-2);
+    return val.slice(0, 4) + "..." + val.slice(-4);
+  }
+
+  return "";
+}
+
+/**
  * Returns true for file paths that are almost certainly template / test / doc files
  * rather than real configuration with actual secrets.
  */
@@ -677,6 +723,7 @@ export interface AutoScanFinding {
   fileUrl: string;
   query: string;
   queryLabel: string;
+  valuePreview: string;
 }
 
 const autoScanState = {
@@ -949,6 +996,7 @@ async function runAutoScan(): Promise<void> {
         ts: Date.now(), severity: sev,
         repo: item.repository.full_name, path: item.path,
         fileUrl: item.html_url, query: q, queryLabel: label,
+        valuePreview: extractValuePreview(snippet, item.path),
       };
       newFindings.push(finding);
       autoScanState.recentFindings.unshift(finding);
@@ -1303,7 +1351,7 @@ router.get("/github/search", async (req, res) => {
     const data = (await r.json()) as GitHubSearchResponse;
     const enriched = data.items.map((item) => {
       const snippet = item.text_matches?.[0]?.fragment ?? "";
-      return { ...item, severity: severity(item.path, snippet), snippet };
+      return { ...item, severity: severity(item.path, snippet), snippet, valuePreview: extractValuePreview(snippet, item.path) };
     });
 
     if (notify) {

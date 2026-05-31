@@ -1,5 +1,21 @@
 # Edit History — GH Dork
 
+## 2026-05-31 — Session 5: 1 Perubahan (#24)
+
+### #24 Value Preview — Potongan Nilai Terdeteksi (Disensor)
+- Fungsi baru `extractValuePreview(snippet, filePath)` di backend: ekstrak nilai asli dari snippet dan sensor tengahnya
+  - Format regex-confirmed keys: `ETH Key: 0xABCD...ef12`, `AWS Key: AKIA1234...WXYZ`, `GH Token: ghp_ABCD...ef12`, `BTC WIF: 5ABC...ef12`, `NEAR Key: ed25519:ABCD...ef12`, `xprv/zprv`, `Solana Key`, `Hex Key`
+  - Format mnemonic (12/24 kata): `Mnemonic: word1 word2 ... wordN [12 words]`
+  - Fallback assignment pattern: `KEY = "value"` → `valu...ef12`
+  - Tidak ada preview jika tidak ada nilai yang bisa diekstrak
+- Field `valuePreview: string` ditambah ke `AutoScanFinding` interface
+- Auto-scan findings: `valuePreview` diisi saat `processPage()` membuat finding baru
+- Manual search: `valuePreview` diisi di pipeline enrichment item (`data.items.map`)
+- UI auto-scan card: badge kuning `🔑 Value: ETH Key: 0xABCD...ef12` muncul di bawah header card jika ada preview
+- UI manual search card: badge yang sama muncul di atas snippet, hanya ketika ada nilai terdeteksi
+- CSS: `.val-preview`, `.val-preview-label`, `.val-preview-wrap` — styling monospace kuning transparan
+- File: `artifacts/api-server/src/routes/github.ts` (fungsi baru, interface update, processPage, enriched), `artifacts/api-server/public/index.html` (CSS, auto-scan card, manual search card)
+
 ## 2026-05-31 — Session 4: 2 Perubahan (#21–#22)
 
 ### #21 Fix False Positive CRITICAL — Placeholder & Empty Value Guard
