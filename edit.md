@@ -1,5 +1,29 @@
 # Edit History — GH Dork
 
+## 2026-06-01 — Session 14: Import Dork Custom + Auto-Switch Mode
+
+### #55 Import 107 Dork Custom ke DORKS Library (12 Kategori Code Search)
+- **File:** `artifacts/api-server/public/index.html`
+- Tambah 12 kategori baru ke array `DORKS[]` (semua untuk Code Search mode):
+  - `[Code] Private Keys Extended` — 11 query (PEM, EC, DSA, OPENSSH, keystore, wallet.dat, UTC--)
+  - `[Code] Ethereum & EVM` — 8 query (eth.accounts, web3, hardhat, truffle, secrets.json)
+  - `[Code] Bitcoin` — 5 query (privateKey, wif, bitcoind, bitcoin.conf, wallet.dat)
+  - `[Code] Solana` — 6 query (keypair.json, SOLANA_PRIVATE_KEY, phantom, solana.web3)
+  - `[Code] Tron` — 4 query (TRON_PRIVATE_KEY, tronweb, TronGrid, TRX mnemonic)
+  - `[Code] Seed Phrases Enhanced` — 10 query (bip39, metamask, ledger, trezor, trustwallet, coinbase)
+  - `[Code] Web3 Config Files` — 11 query (hardhat.config, foundry.toml, truffle-config, brownie)
+  - `[Code] RPC & Node Credentials` — 10 query (INFURA, ALCHEMY, QUICKNODE, MORALIS, CHAINSTACK)
+  - `[Code] Exchange API Keys` — 11 query (Binance, Coinbase, Kraken, KuCoin, Bybit, OKX, Gate, Bitget)
+  - `[Code] Payment Gateways` — 8 query (Stripe sk_live, PayPal, Square, Braintree, Razorpay)
+  - `[Code] Docker & Deploy Secrets` — 7 query (docker-compose, Dockerfile, .env.production)
+  - `[Code] Path Hunting` — 9 query (src/config, src/secrets, deploy, scripts, backup, migrations)
+  - `[Code] Language Specific` — 6 query (Python, JS, TS, Go, Rust, Java)
+- **Fix `pickDork()`**: auto-deteksi query — jika mengandung `filename:` / `extension:` / `path:` / `language:` → otomatis switch ke mode **Code Search** sebelum search dijalankan
+- Query dengan regex GitHub tidak valid (seperti `/[a-fA-F0-9]{64}/`) dibuang, multi-line query di-collapse ke satu baris
+- File lampiran dork user **dihapus** setelah diimport (tidak tersimpan di repo)
+
+Build sukses ✅, server restart ✅
+
 ## 2026-06-01 — Session 13: Gemini AI Aktif — Validasi Otomatis Setiap Temuan
 
 ### #54 Sambungkan Gemini AI ke Pipeline Pencarian & Auto-Scan
