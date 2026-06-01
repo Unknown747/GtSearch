@@ -409,7 +409,7 @@ function isExampleOrTestFile(filePath: string): boolean {
 /** Keep only items whose repo was pushed/updated within maxAgeDays. */
 function filterRecentRepos<T extends { repository: { pushed_at?: string; updated_at?: string } }>(
   items: T[],
-  maxAgeDays = 30,
+  maxAgeDays = 7,
 ): T[] {
   const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
   return items.filter((item) => {
@@ -1123,7 +1123,7 @@ async function runAutoScan(): Promise<void> {
 
   interface GHItem {
     path: string; html_url: string;
-    repository: { full_name: string };
+    repository: { full_name: string; pushed_at?: string; updated_at?: string };
     text_matches?: Array<{ fragment: string }>;
   }
 
@@ -1253,7 +1253,7 @@ async function runAutoScan(): Promise<void> {
         }
         logger.info({ label, results: data.items?.length ?? 0, remaining: state.remaining, windowDays, token: `...${token.slice(-4)}` }, "Auto-scan query done");
 
-        processPage(data.items ?? [], label, q);
+        processPage(filterRecentRepos(data.items ?? []), label, q);
 
         if ((data.items?.length ?? 0) >= 30 && state.remaining > 5) {
           try {
@@ -1263,7 +1263,7 @@ async function runAutoScan(): Promise<void> {
             if (rem2 >= 0) tokenPool.update(token, rem2, rst2 ? parseInt(rst2, 10) : null);
             if (r2.ok) {
               const data2 = (await r2.json()) as { items: GHItem[] };
-              processPage(data2.items ?? [], label, q);
+              processPage(filterRecentRepos(data2.items ?? []), label, q);
               logger.info({ label, p2: data2.items?.length ?? 0 }, "Auto-scan page 2 fetched");
             }
           } catch (p2err) { logger.warn({ err: p2err, q }, "Auto-scan page 2 error (non-fatal)"); }

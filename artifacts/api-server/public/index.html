@@ -564,7 +564,7 @@
       <input class="input" id="scope-input" type="text" placeholder="Scope: username atau org GitHub (opsional)" autocomplete="off">
       <div class="filter-row">
         <label class="filter-chk" title="Exclude hasil dari repo fork — mengurangi duplikat secara signifikan"><input type="checkbox" id="f-no-fork" checked> <span>Exclude forks</span></label>
-        <label class="filter-chk" title="Hanya repo yang di-push dalam 30 hari terakhir — hasil fresh saja"><input type="checkbox" id="f-active" checked> <span>Recent (30d)</span></label>
+        <label class="filter-chk" title="Hanya repo yang di-push dalam 7 hari terakhir — hasil fresh saja"><input type="checkbox" id="f-active" checked> <span>Recent (7d)</span></label>
         <label class="filter-chk" title="Tampilkan CRITICAL terlebih dahulu"><input type="checkbox" id="f-sort-sev" checked> <span>Sort: severity</span></label>
         <label class="filter-chk" title="Maksimal 1 hasil per repo — hasil lebih beragam"><input type="checkbox" id="f-one-per-repo"> <span>1/repo</span></label>
         <select class="age-select" id="f-age" title="Filter berdasarkan tahun repo dibuat">
@@ -1393,7 +1393,7 @@ function renderContent(data,error,loading) {
   const sortLabel=S.sortBySev?'<span class="sort-badge">↑ severity</span>':'';
   let html=`<div class="results-meta"><span><span class="count-hi">${totalCount.toLocaleString()}</span> hasil ditemukan${totalCount>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>${sortLabel}Hal. ${S.page} / ${totalPages||1}</span></div>`;
   if(totalCount>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Notifikasi CRITICAL/HIGH otomatis dikirim ke Telegram</div>`;
-  if(totalCount>0){const cutoff=document.getElementById('f-active').checked?' · Filter: 30 hari terakhir':'';html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman. Diurutkan: severity → terbaru${cutoff}.</div>`;}
+  if(totalCount>0){const cutoff=document.getElementById('f-active').checked?' · Filter: 7 hari terakhir':'';html+=`<div class="info-bar info-warn">ℹ GitHub membatasi 30 hasil per halaman. Diurutkan: severity → terbaru${cutoff}.</div>`;}
   if(!data.items||data.items.length===0) {
     html+=`<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil</div><div class="empty-sub">Coba query berbeda atau hapus filter (Exclude forks / Active)</div></div>`;
   } else {
@@ -1420,7 +1420,7 @@ function renderContent(data,error,loading) {
     const noForkFilter=document.getElementById('f-no-fork').checked;
     const activeFilter=document.getElementById('f-active').checked;
     const ageVal=document.getElementById('f-age').value;
-    const cutoff30=activeFilter?Date.now()-30*24*60*60*1000:0;
+    const cutoff7=activeFilter?Date.now()-7*24*60*60*1000:0;
     const cutoffYear=ageVal?new Date(`${ageVal}-01-01`).getTime():0;
     const seenRepos=new Set();
     const deduped=items.filter(item=>{
@@ -1432,7 +1432,7 @@ function renderContent(data,error,loading) {
       if(noForkFilter&&repo.fork) return false;
       // Client-side: only repos pushed within last 30d
       // NOTE: GitHub code search API often omits pushed_at/updated_at — skip filter when date is missing
-      if(activeFilter){const ds=repo.pushed_at||repo.updated_at; if(ds){const pt=new Date(ds).getTime(); if(pt<cutoff30) return false;}}
+      if(activeFilter){const ds=repo.pushed_at||repo.updated_at; if(ds){const pt=new Date(ds).getTime(); if(pt<cutoff7) return false;}}
       // Client-side: only repos created after selected year
       if(ageVal){const ds=repo.created_at; if(ds){const ct=new Date(ds).getTime(); if(ct<cutoffYear) return false;}}
       if(onePerRepo&&rn&&seenRepos.has(rn)) return false;

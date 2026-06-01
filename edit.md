@@ -18,6 +18,17 @@
 - **Root cause:** Script post-merge mencoba menjalankan `pnpm --filter db push` tapi tidak ada workspace package bernama `db`. Menyebabkan error pada setiap merge.
 - **Fix:** Hapus baris `pnpm --filter db push` — project menggunakan file-based persistence, tidak ada database migration.
 
+### #48 Update: Filter "Recent" diperketat dari 30d → 7d (manual search + auto-scan)
+- **File:** `artifacts/api-server/public/index.html`, `artifacts/api-server/src/routes/github.ts`
+- **Perubahan:**
+  - Frontend: label "Recent (30d)" → "Recent (7d)", tooltip diperbarui, cutoff dihitung dari 7 hari
+  - Info bar: "Filter: 30 hari terakhir" → "Filter: 7 hari terakhir"
+  - Backend `filterRecentRepos`: default `maxAgeDays` 30 → 7
+  - Auto-scan `GHItem` interface: tambah field opsional `pushed_at?: string; updated_at?: string` di `repository`
+  - Auto-scan loop: `processPage(data.items)` → `processPage(filterRecentRepos(data.items))` untuk page 1 dan page 2
+- **Alasan:** Repository lama hampir pasti sudah tidak ada private key/mnemonic valid — sudah dieksploitasi. Fokus hanya pada repo yang aktif dalam 7 hari terakhir.
+- **Catatan:** GitHub code search API sering tidak mengembalikan `pushed_at` — jika field tidak ada, item tetap lolos (tidak difilter paksa)
+
 ### #47 Bug Fix: Filter "Recent 30d" menyaring semua hasil (tidak ada hasil ditampilkan)
 - **File:** `artifacts/api-server/public/index.html` (fungsi `renderContent`, filter `deduped`)
 - **Root cause:** GitHub Code Search API (`/search/code`) **tidak mengembalikan** field `pushed_at` / `updated_at` / `created_at` di dalam objek repository. Filter client-side menggunakan fallback `new Date(undefined || 0)` → tahun 1970, yang selalu lebih kecil dari cutoff 30 hari → semua item difilter keluar → tidak ada hasil ditampilkan, padahal `total_count > 0`.
