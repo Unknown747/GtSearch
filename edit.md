@@ -1,5 +1,29 @@
 # Edit History — GH Dork
 
+## 2026-06-01 — Session 15: Hapus Code Search + Audit & Cleanup
+
+### #56 Hapus Code Search Sepenuhnya (Manual + Auto + Backend)
+- **Frontend `index.html`:**
+  - Hapus mode toggle HTML (tombol `📝 Commit Search` / `📄 Code Search` dan hint span)
+  - Hapus CSS `.mode-toggle-row`, `.mode-label`, `.mode-btn`, `.mode-hint`
+  - Hapus 12 kategori `[Code]` dork dari DORKS array (107 query code search)
+  - Hapus `S.searchMode` dari state object
+  - Hapus fungsi `setSearchMode()` seluruhnya
+  - Sederhanakan `pickDork()` — hilangkan auto-switch mode
+  - Sederhanakan `doSearch()` — hapus branch `else` code search, hanya commit logic tersisa
+  - `runSearch()` hardcode `mode=commits`
+  - `renderContent()` hapus `isCommitMode` var — selalu commit mode sekarang
+  - Hapus Code Card rendering branch — hanya Commit Card tersisa
+  - Sederhanakan sort/filter — tidak ada lagi `isCommitMode` ternary
+  - `cryptoOnly` filter sekarang selalu pakai severity check (CRITICAL/HIGH)
+  - Batch search sederhanakan — hapus mode variable, hardcode `mode=commits`
+- **Backend `github.ts`:**
+  - `const mode = "commits"` — bukan lagi ternary dari query param
+  - Hapus seluruh blok `// CODE SEARCH MODE` (~80 baris: code search URL, headers, enrichment dengan AI validate, notify, response)
+  - Hapus dead `if (mode === "commits")` wrapper — commit search langsung tanpa kondisi
+  - Import `validateWithAI` dan `batchValidateWithAI` tetap dipakai di auto-scan (tidak dihapus)
+- Build sukses ✅, server restart ✅
+
 ## 2026-06-01 — Session 14: Import Dork Custom + Auto-Switch Mode
 
 ### #55 Import 107 Dork Custom ke DORKS Library (12 Kategori Code Search)

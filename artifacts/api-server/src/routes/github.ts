@@ -1483,7 +1483,7 @@ router.get("/github/search", async (req, res) => {
   const page = parseInt((req.query["page"] as string) ?? "1", 10) || 1;
   const perPage = Math.min(parseInt((req.query["per_page"] as string) ?? "30", 10) || 30, 100);
   const notify = (req.query["notify"] as string) !== "false";
-  const mode = (req.query["mode"] as string) === "commits" ? "commits" : "code";
+  const mode = "commits";
 
   if (!q || !q.trim()) {
     res.status(400).json({ error: "Missing query parameter q" });
@@ -1513,8 +1513,8 @@ router.get("/github/search", async (req, res) => {
 
   const { token } = picked;
 
-  // ── COMMIT SEARCH MODE ────────────────────────────────────────────────────
-  if (mode === "commits") {
+  // ── COMMIT SEARCH ────────────────────────────────────────────────────────
+  {
     const url = `https://api.github.com/search/commits?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&sort=committer-date&order=desc`;
     const headers: Record<string, string> = {
       Authorization: `token ${token}`,
@@ -1573,93 +1573,6 @@ router.get("/github/search", async (req, res) => {
     return;
   }
 
-  // ── CODE SEARCH MODE (kept as fallback) ───────────────────────────────────
-  const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&sort=indexed&order=desc`;
-  const headers: Record<string, string> = {
-    Authorization: `token ${token}`,
-    Accept: "application/vnd.github.text-match+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "GH-Dork/2.0",
-  };
-
-  try {
-    const r = await fetch(url, { headers });
-
-    const remaining = parseInt(r.headers.get("x-ratelimit-remaining") ?? "-1", 10);
-    const resetEpoch = r.headers.get("x-ratelimit-reset");
-    const resetSec = resetEpoch ? parseInt(resetEpoch, 10) : null;
-    if (remaining >= 0) tokenPool.update(token, remaining, resetSec);
-
-    if (r.status === 401) {
-      tokenPool.flagError(token);
-      tokenPool.update(token, 0, resetSec);
-      res.status(401).json({ error: "GitHub token invalid or expired. Check your secrets." });
-      return;
-    }
-    if (r.status === 403) {
-      tokenPool.update(token, 0, resetSec);
-      res.status(429).json({ error: `Rate limit exceeded. Resets at ${resetSec ? new Date(resetSec * 1000).toISOString() : "unknown"}.` });
-      return;
-    }
-    if (r.status === 422) {
-      const body = (await r.json()) as { message?: string };
-      res.status(422).json({ error: body.message ?? "Query validation failed." });
-      return;
-    }
-    if (!r.ok) {
-      res.status(r.status).json({ error: `GitHub API error: ${r.status}` });
-      return;
-    }
-
-    interface GitHubSearchResponse {
-      total_count: number; incomplete_results: boolean;
-      items: Array<{
-        name: string; path: string; html_url: string;
-        repository: { full_name: string; html_url: string; stargazers_count: number; pushed_at: string; updated_at: string; fork: boolean; archived: boolean };
-        text_matches?: Array<{ fragment: string; matches?: Array<{ text: string; indices: number[] }> }>;
-      }>;
-    }
-    const data = (await r.json()) as GitHubSearchResponse;
-    const enriched = await Promise.all(data.items.map(async (item) => {
-      const snippet = item.text_matches?.[0]?.fragment ?? "";
-      const sev = severity(item.path, snippet);
-      const vp = extractValuePreview(snippet, item.path);
-      const baseConf = confidenceScore(item.path, snippet, sev);
-      let aiValidated = false;
-      let aiType: string | undefined;
-      let finalConf = baseConf;
-      if (vp) {
-        try {
-          const aiRes = await validateWithAI(vp, vp.split(":")[0].trim());
-          if (aiRes.confidence > 0) {
-            aiValidated = true;
-            aiType = aiRes.type;
-            finalConf = Math.round((baseConf + aiRes.confidence) / 2);
-          }
-        } catch { /* non-fatal */ }
-      }
-      return { ...item, severity: sev, snippet, valuePreview: vp, confidence: finalConf, aiValidated, aiType, mode: "code" };
-    }));
-
-    if (notify) {
-      const freshCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      const hits: Finding[] = enriched
-        .filter((i) => {
-          const hasCrypto = !!i.valuePreview;
-          const isHighSev = i.severity === "CRITICAL" || i.severity === "HIGH";
-          if (!hasCrypto && !isHighSev) return false;
-          const repoDate = new Date(i.repository.pushed_at ?? i.repository.updated_at ?? 0).getTime();
-          return repoDate >= freshCutoff;
-        })
-        .map((i) => ({ severity: i.severity, repo: i.repository.full_name, path: i.path, fileUrl: i.html_url, snippet: i.snippet, valuePreview: i.valuePreview }));
-      void sendTelegram(q, hits);
-    }
-
-    res.json({ ...data, items: enriched, mode: "code" });
-  } catch (err) {
-    req.log.error({ err }, "GitHub search failed");
-    res.status(502).json({ error: "Failed to reach GitHub API" });
-  }
 });
 
 // ── POST /api/github/notify-test ──────────────────────────────────────────────

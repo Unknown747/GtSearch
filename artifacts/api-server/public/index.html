@@ -378,12 +378,6 @@
     .strict-toggle.on{background:rgba(239,68,68,.22);border-color:rgba(239,68,68,.5);font-weight:600;}
     .strict-desc{font-size:10px;color:var(--muted);}
     .batch-lbl{font-size:9px;color:var(--primary);background:rgba(99,102,241,.12);border-radius:3px;padding:1px 5px;margin-left:5px;font-weight:600;}
-    /* ── Mode toggle ── */
-    .mode-toggle-row{display:flex;align-items:center;gap:6px;margin:6px 0 4px;flex-wrap:wrap;}
-    .mode-label{font-size:10px;color:var(--muted);font-weight:600;}
-    .mode-btn{font-size:10px;padding:3px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--muted);cursor:pointer;transition:all 0.15s;}
-    .mode-btn.active{background:rgba(99,102,241,.18);border-color:var(--primary);color:var(--primary);font-weight:600;}
-    .mode-hint{font-size:9px;color:var(--muted);margin-left:4px;}
     /* ── Commit card ── */
     .commit-card{border-left:2px solid rgba(99,102,241,.4);}
     .commit-sha{font-size:9px;font-family:monospace;color:var(--muted);margin-left:6px;}
@@ -577,12 +571,6 @@
       <div class="search-row">
         <input class="input" id="q-input" type="text" placeholder='"add mnemonic" OR "private key" OR "add wallet"' autocomplete="off" spellcheck="false">
         <button class="btn btn-primary" id="btn-search" onclick="doSearch()">🔍 Search</button>
-      </div>
-      <div class="mode-toggle-row">
-        <span class="mode-label">Mode:</span>
-        <button class="mode-btn active" id="mode-btn-commits" onclick="setSearchMode('commits')">📝 Commit Search</button>
-        <button class="mode-btn" id="mode-btn-code" onclick="setSearchMode('code')">📄 Code Search</button>
-        <span class="mode-hint" id="mode-hint">Mencari di pesan commit — hasil fresh, filter tanggal bekerja</span>
       </div>
       <input class="input" id="scope-input" type="text" placeholder="Scope: username atau org GitHub (opsional)" autocomplete="off">
       <div class="filter-row">
@@ -824,7 +812,7 @@
 
 <script>
 /* ── Dork Library ─────────────────────────────────────────────────────────── */
-// DORKS: commit-search queries (default mode). Gunakan mode Code untuk file search.
+// DORKS: commit-search queries.
 const DORKS = [
   { cat:'Seed Phrases & Mnemonics', icon:'🌱', color:'#facc15', queries:[
     { label:'commit: add mnemonic',        q:'"add mnemonic" OR "mnemonic added" OR "add seed phrase"' },
@@ -901,141 +889,6 @@ const DORKS = [
     { label:'commit: BTC key',             q:'"bitcoin" "private key" OR "BTC_PRIVATE_KEY" OR "wif key"' },
   ]},
 
-  /* ═══════════════════════════════════════════════════════════════════
-     CODE SEARCH DORKS — gunakan mode "📄 Code Search"
-     ═══════════════════════════════════════════════════════════════════ */
-  { cat:'[Code] Private Keys Extended', icon:'🔐', color:'#ef4444', queries:[
-    { label:'PRIVATE KEY (0x/BEGIN/RSA)',   q:'"PRIVATE KEY" ("0x" OR "BEGIN" OR "RSA") NOT "TEST" NOT "EXAMPLE"' },
-    { label:'BEGIN EC PRIVATE KEY',        q:'"BEGIN EC PRIVATE KEY" NOT "TEST"' },
-    { label:'BEGIN DSA PRIVATE KEY',       q:'"BEGIN DSA PRIVATE KEY" NOT "TEST"' },
-    { label:'BEGIN OPENSSH PRIVATE KEY',   q:'"BEGIN OPENSSH PRIVATE KEY" NOT "TEST"' },
-    { label:'extension:pem PRIVATE KEY',   q:'extension:pem "PRIVATE KEY" NOT "TEST"' },
-    { label:'extension:key PRIVATE',       q:'extension:key "PRIVATE" NOT "TEST"' },
-    { label:'path:*.p8 PRIVATE KEY',       q:'path:*.p8 "PRIVATE KEY"' },
-    { label:'path:*.pk PRIVATE',           q:'path:*.pk "PRIVATE"' },
-    { label:'wallet.dat private',          q:'"wallet.dat" "private" NOT "TEST"' },
-    { label:'keystore.json crypto',        q:'"keystore.json" "crypto" "address"' },
-    { label:'UTC-- ethereum address',      q:'"UTC--" "ethereum" "address"' },
-  ]},
-  { cat:'[Code] Ethereum & EVM', icon:'⟠', color:'#6366f1', queries:[
-    { label:'privateKey 0x ethereum',      q:'"privateKey" "0x" ("ethereum" OR "web3")' },
-    { label:'eth.accounts.privateKey',     q:'"eth.accounts.privateKey"' },
-    { label:'web3.eth.accounts.privateKey',q:'"web3.eth.accounts.privateKey"' },
-    { label:'secrets.json ethereum',       q:'filename:secrets.json "ethereum"' },
-    { label:'Ethereum privateKey 0x',      q:'"Ethereum" "privateKey" "0x"' },
-    { label:'chainId rpcUrls privateKey',  q:'"chainId" "rpcUrls" "privateKey"' },
-    { label:'hardhat privateKey 0x',       q:'"hardhat" "privateKey" "0x"' },
-    { label:'truffle mnemonic ethereum',   q:'"truffle" "mnemonic" "ethereum"' },
-  ]},
-  { cat:'[Code] Bitcoin', icon:'₿', color:'#f59e0b', queries:[
-    { label:'bitcoin privateKey',          q:'"bitcoin" "privateKey" NOT "TEST"' },
-    { label:'Bitcoin wif',                 q:'"Bitcoin" "wif" NOT "TEST"' },
-    { label:'bitcoind rpcpassword',        q:'"bitcoind" "rpcpassword"' },
-    { label:'bitcoin.conf rpcuser',        q:'"bitcoin.conf" "rpcuser"' },
-    { label:'wallet.dat bitcoin',          q:'"wallet.dat" "bitcoin"' },
-  ]},
-  { cat:'[Code] Solana', icon:'◎', color:'#9945ff', queries:[
-    { label:'solana privateKey json',      q:'"solana" "privateKey" extension:json' },
-    { label:'SOLANA_PRIVATE_KEY env',      q:'"SOLANA_PRIVATE_KEY" extension:env' },
-    { label:'solana-keypair.json',         q:'"solana-keypair.json"' },
-    { label:'solana mnemonic',             q:'"solana" "mnemonic" NOT "TEST"' },
-    { label:'phantom mnemonic json',       q:'"phantom" "mnemonic" extension:json' },
-    { label:'solana.web3 privateKey',      q:'"solana.web3" "privateKey"' },
-  ]},
-  { cat:'[Code] Tron', icon:'🔴', color:'#dc2626', queries:[
-    { label:'TRON_PRIVATE_KEY env',        q:'"TRON_PRIVATE_KEY" extension:env' },
-    { label:'tronweb privateKey',          q:'"tronweb" "privateKey"' },
-    { label:'TronGrid apiKey',             q:'"TronGrid" "apiKey"' },
-    { label:'TRX mnemonic',               q:'"TRX" "mnemonic" NOT "TEST"' },
-  ]},
-  { cat:'[Code] Seed Phrases Enhanced', icon:'🌱', color:'#22c55e', queries:[
-    { label:'mnemonic 12/24 word',         q:'"mnemonic" ("12 word" OR "24 word")' },
-    { label:'recovery phrase wallet',      q:'"recovery phrase" ("wallet" OR "crypto")' },
-    { label:'bip39 mnemonic',             q:'"bip39" "mnemonic" NOT "TEST"' },
-    { label:'ethereumjs-wallet mnemonic',  q:'"ethereumjs-wallet" "mnemonic"' },
-    { label:'hdwallet mnemonic',           q:'"hdwallet" "mnemonic"' },
-    { label:'metamask seed phrase',        q:'"metamask" "seed phrase"' },
-    { label:'ledger recovery phrase',      q:'"ledger" "recovery phrase"' },
-    { label:'trezor seed txt',             q:'"trezor" "seed" extension:txt' },
-    { label:'trustwallet mnemonic',        q:'"trustwallet" "mnemonic"' },
-    { label:'coinbase seed',              q:'"coinbase" "seed" NOT "TEST"' },
-  ]},
-  { cat:'[Code] Web3 Config Files', icon:'⚙️', color:'#0ea5e9', queries:[
-    { label:'hardhat.config.js PRIVATE_KEY',  q:'filename:hardhat.config.js "PRIVATE_KEY" NOT "TEST"' },
-    { label:'hardhat.config.ts mnemonic',     q:'filename:hardhat.config.ts "mnemonic" NOT "TEST"' },
-    { label:'hardhat.config.js accounts',     q:'filename:hardhat.config.js "accounts" "privateKey"' },
-    { label:'foundry.toml private_key',       q:'filename:foundry.toml "private_key"' },
-    { label:'foundry.toml mnemonic',          q:'filename:foundry.toml "mnemonic"' },
-    { label:'truffle-config.js mnemonic',     q:'filename:truffle-config.js "mnemonic"' },
-    { label:'truffle-config.js privateKey',   q:'filename:truffle-config.js "privateKey"' },
-    { label:'brownie-config.yaml private',    q:'filename:brownie-config.yaml "private_key"' },
-    { label:'ethermine.json address',         q:'filename:ethermine.json "address"' },
-    { label:'config.js web3 privateKey',      q:'filename:config.js "web3" "privateKey"' },
-    { label:'path config web3 privateKey',    q:'path:/config/ "web3" "privateKey"' },
-  ]},
-  { cat:'[Code] RPC & Node Credentials', icon:'🌐', color:'#14b8a6', queries:[
-    { label:'INFURA_PROJECT_ID env',       q:'"INFURA_PROJECT_ID" extension:env' },
-    { label:'INFURA_PROJECT_SECRET env',   q:'"INFURA_PROJECT_SECRET" extension:env' },
-    { label:'ALCHEMY_API_KEY env',         q:'"ALCHEMY_API_KEY" extension:env' },
-    { label:'QUICKNODE_API_TOKEN env',     q:'"QUICKNODE_API_TOKEN" extension:env' },
-    { label:'MORALIS_API_KEY env',         q:'"MORALIS_API_KEY" extension:env' },
-    { label:'CHAINSTACK_API_KEY env',      q:'"CHAINSTACK_API_KEY" extension:env' },
-    { label:'RPC_URL secret/token',        q:'"RPC_URL" ("secret" OR "token" OR "auth")' },
-    { label:'wss:// api_key eth/polygon',  q:'"wss://" "api_key" ("ethereum" OR "polygon")' },
-    { label:'https://rpc. Authorization',  q:'"https://rpc." "Authorization" extension:js' },
-    { label:'websocket wss INFURA/ALCHEMY',q:'"websocket" "wss://" ("INFURA" OR "ALCHEMY")' },
-  ]},
-  { cat:'[Code] Exchange API Keys', icon:'🔑', color:'#f97316', queries:[
-    { label:'BINANCE_API_KEY + SECRET',    q:'BINANCE_API_KEY BINANCE_API_SECRET' },
-    { label:'COINBASE_API_KEY + SECRET',   q:'COINBASE_API_KEY COINBASE_API_SECRET' },
-    { label:'KRAKEN_API_KEY + SECRET',     q:'KRAKEN_API_KEY KRAKEN_API_SECRET' },
-    { label:'KUCOIN_KEY + SECRET + PASS',  q:'KUCOIN_KEY KUCOIN_SECRET KUCOIN_PASSPHRASE' },
-    { label:'BYBIT_API_KEY + SECRET',      q:'BYBIT_API_KEY BYBIT_API_SECRET' },
-    { label:'OKX_API_KEY + SECRET + PASS', q:'OKX_API_KEY OKX_SECRET_KEY OKX_PASSPHRASE' },
-    { label:'GATE_API_KEY + SECRET',       q:'GATE_API_KEY GATE_API_SECRET' },
-    { label:'CRYPTO_COM API keys',         q:'CRYPTO_COM_API_KEY CRYPTO_COM_API_SECRET' },
-    { label:'BITGET_API_KEY + SECRET',     q:'BITGET_API_KEY BITGET_API_SECRET' },
-    { label:'apiKey+secret binance/cb',    q:'"apiKey" "secret" ("binance" OR "coinbase")' },
-    { label:'access_key+secret kraken/kc', q:'"access_key" "secret_key" ("kraken" OR "kucoin")' },
-  ]},
-  { cat:'[Code] Payment Gateways', icon:'💳', color:'#a855f7', queries:[
-    { label:'STRIPE_SECRET_KEY sk_live',   q:'"STRIPE_SECRET_KEY" "sk_live"' },
-    { label:'COINBASE_COMMERCE_API_KEY',   q:'"COINBASE_COMMERCE_API_KEY"' },
-    { label:'COINPAYMENTS_PRIVATE_KEY',    q:'"COINPAYMENTS_PRIVATE_KEY"' },
-    { label:'PAYPAL CLIENT + SECRET',      q:'"PAYPAL_CLIENT_ID" "PAYPAL_SECRET"' },
-    { label:'square access_token prod',    q:'"square" "access_token" "production"' },
-    { label:'braintree private_key prod',  q:'"braintree" "private_key" "production"' },
-    { label:'razorpay key_id + secret',    q:'"razorpay" "key_id" "key_secret"' },
-    { label:'flocoin api_key',             q:'"flocoin" "api_key"' },
-  ]},
-  { cat:'[Code] Docker & Deploy Secrets', icon:'🐳', color:'#0284c7', queries:[
-    { label:'docker-compose PRIVATE_KEY',  q:'filename:docker-compose.yml "PRIVATE_KEY"' },
-    { label:'docker-compose MNEMONIC',     q:'filename:docker-compose.yml "MNEMONIC"' },
-    { label:'docker-compose API_KEY',      q:'filename:docker-compose.yml "API_KEY"' },
-    { label:'Dockerfile ENV PRIVATE_KEY',  q:'filename:Dockerfile "ENV" ("PRIVATE_KEY" OR "API_KEY")' },
-    { label:'.env.production PRIVATE_KEY', q:'".env.production" "PRIVATE_KEY"' },
-    { label:'.env.local MNEMONIC',         q:'".env.local" "MNEMONIC"' },
-    { label:'docker-compose.override RPC', q:'"docker-compose.override.yml" "RPC_URL"' },
-  ]},
-  { cat:'[Code] Path Hunting', icon:'🎯', color:'#84cc16', queries:[
-    { label:'path src/config PRIVATE_KEY', q:'path:/src/config/ "PRIVATE_KEY"' },
-    { label:'path src/secrets mnemonic',   q:'path:/src/secrets/ "mnemonic"' },
-    { label:'path deploy API_KEY',         q:'path:/deploy/ ".env" "API_KEY"' },
-    { label:'path scripts PRIVATE_KEY',    q:'path:/scripts/ "PRIVATE_KEY"' },
-    { label:'path backup wallet.dat',      q:'path:/backup/ "wallet.dat"' },
-    { label:'path old privateKey',         q:'path:/old/ "privateKey"' },
-    { label:'path legacy mnemonic',        q:'path:/legacy/ "mnemonic"' },
-    { label:'path migrations eth key',     q:'path:/migrations/ "ethereum" "privateKey"' },
-    { label:'path docker RPC_URL',         q:'path:/docker/ "RPC_URL"' },
-  ]},
-  { cat:'[Code] Language Specific', icon:'💻', color:'#e879f9', queries:[
-    { label:'Python web3 privateKey',      q:'language:python "web3" "privateKey"' },
-    { label:'JS ethers privateKey',        q:'language:javascript "ethers" "privateKey"' },
-    { label:'TS ethers mnemonic',          q:'language:typescript "ethers" "mnemonic"' },
-    { label:'Go ethclient privateKey',     q:'language:go "ethclient" "privateKey"' },
-    { label:'Rust web3 secret_key',        q:'language:rust "web3" "secret_key"' },
-    { label:'Java Web3j credentials',      q:'language:java "Web3j" "credentials"' },
-  ]},
 ];
 
 /* ── State ──────────────────────────────────────────────────────────────────── */
@@ -1048,7 +901,6 @@ const S = {
   autoScan: null,
   openCats: new Set(),
   sortBySev: true,
-  searchMode: 'commits', // 'commits' | 'code'
   seenUrls: new Set(),
   ignoredUrls: new Set(JSON.parse(localStorage.getItem('gh_dork_ignored')||'[]')),
 };
@@ -1393,43 +1245,19 @@ function toggleCat(ci) {
   if(chev) chev.className='chevron'+(S.openCats.has(ci)?' open':'');
 }
 function pickDork(ci,di) {
-  const item=DORKS[ci].queries[di];
-  const q=item.q;
+  const q=DORKS[ci].queries[di].q;
   document.getElementById('q-input').value=q;
-  const isCodeDork=/\b(filename:|extension:|path:|language:)/.test(q);
-  if(isCodeDork) setSearchMode('code');
   doSearch();
-}
-
-/* ── Search ─────────────────────────────────────────────────────────────────── */
-function setSearchMode(mode) {
-  S.searchMode=mode;
-  document.getElementById('mode-btn-commits').classList.toggle('active',mode==='commits');
-  document.getElementById('mode-btn-code').classList.toggle('active',mode==='code');
-  const hint=document.getElementById('mode-hint');
-  if(hint) hint.textContent=mode==='commits'
-    ?'Mencari di pesan commit — hasil fresh, filter tanggal native'
-    :'Mencari isi file kode — snippet langsung terlihat';
-  const inp=document.getElementById('q-input');
-  if(inp&&!inp.value.trim()) inp.placeholder=mode==='commits'
-    ?'"add mnemonic" OR "private key" OR "add wallet"'
-    :'filename:.env "PRIVATE_KEY"';
 }
 function doSearch() {
   let q=document.getElementById('q-input').value.trim(); if(!q) return;
   const scope=document.getElementById('scope-input').value.trim();
   if(scope) q+=` user:${scope}`;
-  if(S.searchMode==='commits'){
-    // Commit search: add date filter natively if Recent (7d) is checked
-    if(document.getElementById('f-active').checked){
-      const since=new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10);
-      if(!q.includes('committer-date:')) q+=` committer-date:>${since}`;
-    }
-    if(document.getElementById('f-no-fork').checked) q+=' fork:false';
-  } else {
-    // Code search: fork:true to include forks (fork:false → 422)
-    if(!document.getElementById('f-no-fork').checked) q+=' fork:true';
+  if(document.getElementById('f-active').checked){
+    const since=new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10);
+    if(!q.includes('committer-date:')) q+=` committer-date:>${since}`;
   }
+  if(document.getElementById('f-no-fork').checked) q+=' fork:false';
   S.sortBySev=document.getElementById('f-sort-sev').checked;
   S.seenUrls=new Set();
   S.activeQuery=q; S.page=1; runSearch();
@@ -1441,7 +1269,7 @@ async function runSearch() {
   document.getElementById('btn-copy-q').onclick=()=>copyText(S.activeQuery);
   S.loading=true; renderContent(null,null,true);
   try {
-    const url=`/api/github/search?q=${encodeURIComponent(S.activeQuery)}&per_page=30&page=${S.page}&mode=${S.searchMode}`;
+    const url=`/api/github/search?q=${encodeURIComponent(S.activeQuery)}&per_page=30&page=${S.page}&mode=commits`;
     const r=await fetch(url);
     const data=await r.json();
     if(!r.ok) throw new Error(data.error||`Server error: ${r.status}`);
@@ -1464,10 +1292,8 @@ function renderContent(data,error,loading) {
   const sortLabel=S.sortBySev?'<span class="sort-badge">↑ severity</span>':'';
   let html=`<div class="results-meta"><span><span class="count-hi">${totalCount.toLocaleString()}</span> hasil ditemukan${totalCount>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>${sortLabel}Hal. ${S.page} / ${totalPages||1}</span></div>`;
   if(totalCount>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Temuan crypto (private key/mnemonic) otomatis dikirim ke Telegram</div>`;
-  const isCommitMode=data.mode==='commits';
   if(totalCount>0){
-    const modeLabel=isCommitMode?'📝 Commit Search':'📄 Code Search';
-    html+=`<div class="info-bar info-warn">ℹ ${modeLabel} — GitHub membatasi 30 hasil per halaman. Diurutkan: severity → terbaru.</div>`;
+    html+=`<div class="info-bar info-warn">ℹ 📝 Commit Search — GitHub membatasi 30 hasil per halaman. Diurutkan: severity → terbaru.</div>`;
   }
   if(!data.items||data.items.length===0) {
     html+=`<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil</div><div class="empty-sub">Coba query berbeda atau nonaktifkan filter Exclude forks / Recent (7d)</div></div>`;
@@ -1479,13 +1305,13 @@ function renderContent(data,error,loading) {
       const sb=b.severity||'LOW';
       const sevDiff=(SEV_ORD[sa]??3)-(SEV_ORD[sb]??3);
       if(sevDiff!==0) return sevDiff;
-      const da=isCommitMode?new Date(a.commit?.committer?.date||0).getTime():new Date(a.repository?.pushed_at||0).getTime();
-      const db=isCommitMode?new Date(b.commit?.committer?.date||0).getTime():new Date(b.repository?.pushed_at||0).getTime();
+      const da=new Date(a.commit?.committer?.date||0).getTime();
+      const db=new Date(b.commit?.committer?.date||0).getTime();
       return db-da;
     });
     if(!S.sortBySev) items.sort((a,b)=>{
-      const da=isCommitMode?new Date(a.commit?.committer?.date||0).getTime():new Date(a.repository?.pushed_at||0).getTime();
-      const db=isCommitMode?new Date(b.commit?.committer?.date||0).getTime():new Date(b.repository?.pushed_at||0).getTime();
+      const da=new Date(a.commit?.committer?.date||0).getTime();
+      const db=new Date(b.commit?.committer?.date||0).getTime();
       return db-da;
     });
     const ignored=S.ignoredUrls;
@@ -1501,13 +1327,9 @@ function renderContent(data,error,loading) {
       const repo=item.repository||{};
       const rn=repo.full_name||'';
       if(noForkFilter&&repo.fork) return false;
-      // Code mode: client-side date filter (commit mode applies it natively via committer-date:>)
-      if(!isCommitMode&&activeFilter){const ds=repo.pushed_at||repo.updated_at;if(ds){const pt=new Date(ds).getTime();if(pt<cutoff7)return false;}}
       if(onePerRepo&&rn&&seenRepos.has(rn)) return false;
       seenRepos.add(rn);
-      // Crypto Only: hanya tampilkan jika ada private key / mnemonic terdeteksi
-      if(cryptoOnly&&!isCommitMode&&!item.valuePreview) return false;
-      if(cryptoOnly&&isCommitMode){const sev=item.severity||'LOW';if(sev!=='CRITICAL'&&sev!=='HIGH') return false;}
+      if(cryptoOnly){const sev=item.severity||'LOW';if(sev!=='CRITICAL'&&sev!=='HIGH') return false;}
       return true;
     });
     deduped.forEach(item=>{
@@ -1519,56 +1341,41 @@ function renderContent(data,error,loading) {
       const archBadge=repo.archived?'<span class="repo-badge badge-arch">archived</span>':'';
       const batchLbl=item._batchLabel?`<span class="batch-lbl">${esc(item._batchLabel)}</span>`:'';
 
-      if(isCommitMode) {
-        // ── COMMIT CARD ──────────────────────────────────────────────────────
-        const c=item.commit||{};
-        const msg=c.message||'';
-        const msgLines=msg.split('\n');
-        const msgFirst=esc(msgLines[0].slice(0,120));
-        const msgFull=esc(msg.slice(0,600));
-        const hasMore=msg.length>msgLines[0].length;
-        const commitDate=c.committer?.date||c.author?.date||'';
-        const author=item.author?.login?`<a href="${esc(item.author.html_url||'#')}" target="_blank" rel="noopener" class="commit-author">@${esc(item.author.login)}</a>`:`<span class="commit-author">${esc(c.author?.name||'unknown')}</span>`;
-        const sha=item.sha?item.sha.slice(0,7):'';
-        const stars=(repo.stargazers_count??0).toLocaleString();
-        html+=`<div class="result-card commit-card" data-url="${fileUrl}">
-          <div class="result-top">
-            <div class="result-links">
-              <div>
-                <a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}${batchLbl}
-                <span class="commit-sha"><a href="${fileUrl}" target="_blank" rel="noopener">${sha} ↗</a></span>
-              </div>
-              <div class="result-meta-row">
-                ${author}
-                <span class="meta-sep">·</span>
-                ${freshBadge(commitDate)}
-                <span class="meta-item">⭐ ${stars}</span>
-              </div>
+      const c=item.commit||{};
+      const msg=c.message||'';
+      const msgLines=msg.split('\n');
+      const msgFirst=esc(msgLines[0].slice(0,120));
+      const msgFull=esc(msg.slice(0,600));
+      const hasMore=msg.length>msgLines[0].length;
+      const commitDate=c.committer?.date||c.author?.date||'';
+      const author=item.author?.login?`<a href="${esc(item.author.html_url||'#')}" target="_blank" rel="noopener" class="commit-author">@${esc(item.author.login)}</a>`:`<span class="commit-author">${esc(c.author?.name||'unknown')}</span>`;
+      const sha=item.sha?item.sha.slice(0,7):'';
+      const stars=(repo.stargazers_count??0).toLocaleString();
+      html+=`<div class="result-card commit-card" data-url="${fileUrl}">
+        <div class="result-top">
+          <div class="result-links">
+            <div>
+              <a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}${batchLbl}
+              <span class="commit-sha"><a href="${fileUrl}" target="_blank" rel="noopener">${sha} ↗</a></span>
             </div>
-            <div class="result-actions">
-              <span class="sev sev-${esc(sev)}">${esc(sev)}</span>
-              <button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan">✕</button>
-              <button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button>
+            <div class="result-meta-row">
+              ${author}
+              <span class="meta-sep">·</span>
+              ${freshBadge(commitDate)}
+              <span class="meta-item">⭐ ${stars}</span>
             </div>
           </div>
-          <div class="commit-msg-box">
-            <span class="commit-msg-icon">💬</span>
-            <span class="commit-msg-text" data-full="${msgFull}">${msgFirst}${hasMore?'<span class="commit-msg-more" onclick="var t=this.parentElement;t.textContent=t.dataset.full;"> …lihat selengkapnya</span>':''}</span>
+          <div class="result-actions">
+            <span class="sev sev-${esc(sev)}">${esc(sev)}</span>
+            <button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan">✕</button>
+            <button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button>
           </div>
-        </div>`;
-      } else {
-        // ── CODE CARD ────────────────────────────────────────────────────────
-        const tm=item.text_matches&&item.text_matches[0];
-        const fragment=tm?.fragment||item.snippet||'';
-        const matches=tm?.matches||[];
-        const stars=(repo.stargazers_count??0).toLocaleString();
-        const pushedDate=repo.pushed_at||repo.updated_at||'';
-        const explorerHtml=sev==='CRITICAL'?detectExplorerLinks(item.path||'',fragment):'';
-        const vp=item.valuePreview||'';
-        const vpHtml=vp?`<div class="val-preview-wrap"><span class="val-preview" onclick="copyText(${JSON.stringify(vp)});event.stopPropagation()" title="Klik untuk salin"><span class="val-preview-label">🔑 Value:&nbsp;</span>${esc(vp)}<span class="val-preview-copy">⎘ salin</span></span></div>`:'';
-        const confHtml=confidenceBadge(item.confidence,item.aiValidated,item.aiType);
-        html+=`<div class="result-card" data-url="${fileUrl}"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${fileUrl}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a>${batchLbl}</div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span>${freshBadge(pushedDate)}</div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="preview-btn" data-preview="${fileUrl}" data-label="${esc(item.path||'')}" title="Preview file">👁</button><button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan hasil ini">✕</button><button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button></div></div>${vpHtml}${confHtml}${highlightSnippet(fragment,matches)}${explorerHtml}</div>`;
-      }
+        </div>
+        <div class="commit-msg-box">
+          <span class="commit-msg-icon">💬</span>
+          <span class="commit-msg-text" data-full="${msgFull}">${msgFirst}${hasMore?'<span class="commit-msg-more" onclick="var t=this.parentElement;t.textContent=t.dataset.full;"> …lihat selengkapnya</span>':''}</span>
+        </div>
+      </div>`;
     });
     if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
   }
@@ -1783,30 +1590,25 @@ async function runBatch(){
   const allItems=[];let totalCount=0;
   const noFork=document.getElementById('f-no-fork').checked;
   const activeFilter=document.getElementById('f-active').checked;
-  const mode=S.searchMode;
   for(const {q,label} of queries){
     try{
       let qFull=q;
-      if(mode==='commits'){
-        if(activeFilter){const since=new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10);if(!qFull.includes('committer-date:'))qFull+=` committer-date:>${since}`;}
-        if(noFork) qFull+=' fork:false';
-      } else {
-        if(!noFork) qFull+=' fork:true';
-      }
-      const r=await fetch(`/api/github/search?q=${encodeURIComponent(qFull)}&per_page=30&page=1&mode=${mode}`);
+      if(activeFilter){const since=new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10);if(!qFull.includes('committer-date:'))qFull+=` committer-date:>${since}`;}
+      if(noFork) qFull+=' fork:false';
+      const r=await fetch(`/api/github/search?q=${encodeURIComponent(qFull)}&per_page=30&page=1&mode=commits`);
       const data=await r.json();
       if(r.ok&&data.items){data.items.forEach(item=>{item._batchLabel=label;});allItems.push(...data.items);totalCount+=data.total_count||0;}
     }catch{}
     await new Promise(r=>setTimeout(r,700));
   }
   S.loading=false;
-  S.activeQuery=`[Batch ${mode}: ${queries.length} queries]`;
+  S.activeQuery=`[Batch: ${queries.length} queries]`;
   S.page=1;
   document.getElementById('q-preview').style.display='flex';
   document.getElementById('q-preview-text').textContent=S.activeQuery;
   document.getElementById('btn-copy-q').onclick=()=>copyText(S.activeQuery);
   saveHist(S.activeQuery,totalCount);
-  renderContent({items:allItems,total_count:totalCount,mode},null,false);
+  renderContent({items:allItems,total_count:totalCount,mode:'commits'},null,false);
 }
 
 /* ── Dork Builder ───────────────────────────────────────────────────────────── */
