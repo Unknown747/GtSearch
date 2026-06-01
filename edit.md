@@ -1,5 +1,22 @@
 # Edit History — GH Dork
 
+## 2026-06-01 — Session 13: Gemini AI Aktif — Validasi Otomatis Setiap Temuan
+
+### #54 Sambungkan Gemini AI ke Pipeline Pencarian & Auto-Scan
+- **File backend:** `artifacts/api-server/src/routes/github.ts`
+  - Import `validateWithAI` dan `batchValidateWithAI` dari `../utils/ai-validator`
+  - Tambah field `aiValidated?: boolean` dan `aiType?: string` ke interface `AutoScanFinding`
+  - **Manual Code Search:** setiap item yang punya `valuePreview` (private key/mnemonic terdeteksi) divalidasi ke Gemini AI secara paralel sebelum hasil dikembalikan ke user — `confidence` di-average antara skor lokal dan skor AI
+  - **Auto-Scan:** setelah semua `newFindings` terkumpul, jalankan `batchValidateWithAI` pada findings yang punya `valuePreview` (concurrency=2) — update `confidence` dan set `aiValidated=true` + `aiType` dari hasil Gemini
+  - Semua AI call non-fatal: jika Gemini gagal/timeout, pipeline tetap berjalan dengan skor lokal
+- **File frontend:** `artifacts/api-server/public/index.html`
+  - `confidenceBadge(conf, aiValidated, aiType)` — parameter baru; jika `aiValidated=true` tampilkan badge `🤖 AI` (ungu) di sebelah kiri bar
+  - CSS baru `.ai-badge` — background ungu transparan, border ungu, font bold
+  - Kedua card (manual search & auto-scan findings) update panggilan `confidenceBadge` untuk pass `aiValidated` dan `aiType`
+  - Hover tooltip badge: "Diverifikasi Gemini AI — ETH Key" (atau tipe credential lainnya)
+
+Build sukses ✅, server restart ✅
+
 ## 2026-06-01 — Session 12: Crypto-Only Filter + Auto-Share + Auto-Clear Auto-Scan
 
 ### #51 Filter "🔑 Crypto Only" — Manual Search

@@ -4,6 +4,7 @@ import path from "path";
 import { createHash } from "crypto";
 import { fileURLToPath } from "url";
 import { logger } from "../lib/logger";
+import { validateWithAI, batchValidateWithAI } from "../utils/ai-validator";
 
 const router = Router();
 
@@ -857,6 +858,8 @@ export interface AutoScanFinding {
   queryLabel: string;
   valuePreview: string;
   confidence: number;
+  aiValidated?: boolean;
+  aiType?: string;
 }
 
 // ── Scan history (for trend chart, max 50 entries) ────────────────────────────
@@ -1295,6 +1298,29 @@ async function runAutoScan(): Promise<void> {
     }
   }
 
+  // ── AI Validation (Gemini) — hanya untuk finding dengan valuePreview ────────
+  const toValidate = newFindings.filter(f => f.valuePreview);
+  if (toValidate.length > 0) {
+    logger.info({ count: toValidate.length }, "Running Gemini AI validation on new findings");
+    try {
+      const aiResults = await batchValidateWithAI(
+        toValidate.map(f => ({ snippet: f.valuePreview, credType: f.valuePreview.split(":")[0].trim() })),
+        2,
+      );
+      for (let i = 0; i < toValidate.length; i++) {
+        const res = aiResults[i];
+        if (res && res.confidence > 0) {
+          toValidate[i].aiValidated = true;
+          toValidate[i].aiType = res.type;
+          toValidate[i].confidence = Math.round((toValidate[i].confidence + res.confidence) / 2);
+        }
+      }
+      logger.info({ validated: toValidate.length }, "Gemini AI validation complete");
+    } catch (err) {
+      logger.warn({ err }, "Gemini AI batch validation failed — skipping");
+    }
+  }
+
   autoScanState.recentFindings = autoScanState.recentFindings.slice(0, 100);
   autoScanState.totalNewFindings += newFindings.length;
   autoScanState.running = false;
@@ -1594,11 +1620,26 @@ router.get("/github/search", async (req, res) => {
       }>;
     }
     const data = (await r.json()) as GitHubSearchResponse;
-    const enriched = data.items.map((item) => {
+    const enriched = await Promise.all(data.items.map(async (item) => {
       const snippet = item.text_matches?.[0]?.fragment ?? "";
       const sev = severity(item.path, snippet);
-      return { ...item, severity: sev, snippet, valuePreview: extractValuePreview(snippet, item.path), confidence: confidenceScore(item.path, snippet, sev), mode: "code" };
-    });
+      const vp = extractValuePreview(snippet, item.path);
+      const baseConf = confidenceScore(item.path, snippet, sev);
+      let aiValidated = false;
+      let aiType: string | undefined;
+      let finalConf = baseConf;
+      if (vp) {
+        try {
+          const aiRes = await validateWithAI(vp, vp.split(":")[0].trim());
+          if (aiRes.confidence > 0) {
+            aiValidated = true;
+            aiType = aiRes.type;
+            finalConf = Math.round((baseConf + aiRes.confidence) / 2);
+          }
+        } catch { /* non-fatal */ }
+      }
+      return { ...item, severity: sev, snippet, valuePreview: vp, confidence: finalConf, aiValidated, aiType, mode: "code" };
+    }));
 
     if (notify) {
       const freshCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
