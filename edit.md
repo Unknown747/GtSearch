@@ -1,5 +1,34 @@
 # Edit History — GH Dork
 
+## 2026-06-01 — Session 12: Crypto-Only Filter + Auto-Share + Auto-Clear Auto-Scan
+
+### #51 Filter "🔑 Crypto Only" — Manual Search
+- **File:** `artifacts/api-server/public/index.html`
+- Tambah checkbox `f-crypto-only` di filter row dengan label "🔑 Crypto Only" (warna kuning, bold)
+- Saat dicentang: Code Search hanya tampilkan item yang `valuePreview` terdeteksi (private key/mnemonic aktual ada)
+- Saat dicentang: Commit Search hanya tampilkan item severity CRITICAL atau HIGH
+- Filter diterapkan di dalam `deduped` filter pipeline di `renderContent()`
+
+### #52 Auto-Share Semua Temuan Crypto — Manual Search Backend
+- **File:** `artifacts/api-server/src/routes/github.ts`
+- **Code Search:** Logika notify diubah — item lolos jika `valuePreview` ada (crypto terdeteksi) ATAU severity CRITICAL/HIGH, tidak perlu keduanya
+- **Commit Search:** Hapus guard `if (hits.length > 0)` — `sendTelegram` selalu dipanggil (mengirim ke Telegram/Discord/Slack untuk setiap pencarian yang ada temuan)
+- Info bar di frontend diupdate: "Temuan crypto (private key/mnemonic) otomatis dikirim ke Telegram"
+
+### #53 Auto-Clear Auto-Scan Findings — Tampilkan Hanya Hasil Scan Terakhir
+- **File backend:** `artifacts/api-server/src/routes/github.ts`
+  - Tambah `latestScanFindings: [] as AutoScanFinding[]` ke `autoScanState`
+  - Reset `autoScanState.latestScanFindings = []` di awal setiap `runAutoScan()`
+  - Setiap finding baru juga di-push ke `latestScanFindings`
+  - Expose `latestScanFindings` di endpoint `GET /api/autoscan/status`
+- **File frontend:** `artifacts/api-server/public/index.html`
+  - Auto-scan findings list kini menampilkan `latestScanFindings` (hanya hasil scan terakhir)
+  - Fallback ke `recentFindings` jika `latestScanFindings` kosong (scan pertama / baru start)
+  - Saat scan sedang berjalan: tampilkan pesan "⏳ Scan sedang berjalan... Hasil scan sebelumnya dihapus"
+  - Setelah scan selesai: otomatis refresh dan tampilkan HANYA temuan dari scan terakhir
+
+Build sukses ✅, server restart ✅
+
 ## 2026-06-01 — Session 11: Audit & Bug Fixes
 
 ### #50 Audit — 3 Bug Ditemukan dan Diperbaiki

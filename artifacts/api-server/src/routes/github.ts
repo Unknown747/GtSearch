@@ -881,6 +881,7 @@ const autoScanState = {
   nextScan: null as number | null,
   scanCount: 0,
   recentFindings: [] as AutoScanFinding[],
+  latestScanFindings: [] as AutoScanFinding[],
   totalNewFindings: 0,
   lastError: null as string | null,
   strictMode: false,
@@ -1077,6 +1078,7 @@ async function runAutoScan(): Promise<void> {
   autoScanState.queriesSkipped = 0;
   autoScanState.lastScan = Date.now();
   autoScanState.scanCount++;
+  autoScanState.latestScanFindings = [];
 
   // ── #3 Priority queue: sort by priority (0=CRITICAL first) ───────────────
   const allQueries = getAllQueries().sort((a, b) => queryPriority(a.label) - queryPriority(b.label));
@@ -1166,6 +1168,7 @@ async function runAutoScan(): Promise<void> {
       };
       newFindings.push(finding);
       autoScanState.recentFindings.unshift(finding);
+      autoScanState.latestScanFindings.push(finding);
       autoScanState.queryHits[label] = (autoScanState.queryHits[label] ?? 0) + 1;
       queryHitsThisScan[label] = (queryHitsThisScan[label] ?? 0) + 1;
     }
@@ -1534,7 +1537,7 @@ router.get("/github/search", async (req, res) => {
             fileUrl: i.html_url,
             snippet: i.commit.message.slice(0, 200),
           }));
-        if (hits.length > 0) void sendTelegram(q, hits);
+        void sendTelegram(q, hits);
       }
       res.json({ ...data, items: enriched, mode: "commits" });
     } catch (err) {
@@ -1601,12 +1604,14 @@ router.get("/github/search", async (req, res) => {
       const freshCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const hits: Finding[] = enriched
         .filter((i) => {
-          if (i.severity !== "CRITICAL" && i.severity !== "HIGH") return false;
+          const hasCrypto = !!i.valuePreview;
+          const isHighSev = i.severity === "CRITICAL" || i.severity === "HIGH";
+          if (!hasCrypto && !isHighSev) return false;
           const repoDate = new Date(i.repository.pushed_at ?? i.repository.updated_at ?? 0).getTime();
           return repoDate >= freshCutoff;
         })
-        .map((i) => ({ severity: i.severity, repo: i.repository.full_name, path: i.path, fileUrl: i.html_url, snippet: i.snippet }));
-      if (hits.length > 0) void sendTelegram(q, hits);
+        .map((i) => ({ severity: i.severity, repo: i.repository.full_name, path: i.path, fileUrl: i.html_url, snippet: i.snippet, valuePreview: i.valuePreview }));
+      void sendTelegram(q, hits);
     }
 
     res.json({ ...data, items: enriched, mode: "code" });
@@ -1662,6 +1667,7 @@ router.get("/autoscan/status", (_req, res) => {
     scanCount: autoScanState.scanCount,
     totalNewFindings: autoScanState.totalNewFindings,
     recentFindings: autoScanState.recentFindings,
+    latestScanFindings: autoScanState.latestScanFindings,
     queryHits: autoScanState.queryHits,
     windowDays: currentScanWindowDays,
     builtinQueriesCount: AUTO_SCAN_QUERIES.length,

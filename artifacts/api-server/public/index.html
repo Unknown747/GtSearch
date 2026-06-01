@@ -589,6 +589,7 @@
         <label class="filter-chk" title="Hanya commit/repo dalam 7 hari terakhir — hasil fresh saja"><input type="checkbox" id="f-active" checked> <span>Recent (7d)</span></label>
         <label class="filter-chk" title="Tampilkan CRITICAL terlebih dahulu"><input type="checkbox" id="f-sort-sev" checked> <span>Sort: severity</span></label>
         <label class="filter-chk" title="Maksimal 1 hasil per repo — hasil lebih beragam"><input type="checkbox" id="f-one-per-repo"> <span>1/repo</span></label>
+        <label class="filter-chk" style="color:var(--primary);font-weight:700" title="Hanya tampilkan hasil yang benar-benar ada private key atau mnemonic terdeteksi"><input type="checkbox" id="f-crypto-only"> <span>🔑 Crypto Only</span></label>
       </div>
       <div class="mobile-pills" id="mobile-pills"></div>
       <div class="query-preview" id="q-preview" style="display:none">
@@ -1318,7 +1319,7 @@ function renderContent(data,error,loading) {
   const tgOk=S.config&&S.config.telegramConfigured;
   const sortLabel=S.sortBySev?'<span class="sort-badge">↑ severity</span>':'';
   let html=`<div class="results-meta"><span><span class="count-hi">${totalCount.toLocaleString()}</span> hasil ditemukan${totalCount>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>${sortLabel}Hal. ${S.page} / ${totalPages||1}</span></div>`;
-  if(totalCount>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Notifikasi CRITICAL/HIGH otomatis dikirim ke Telegram</div>`;
+  if(totalCount>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Temuan crypto (private key/mnemonic) otomatis dikirim ke Telegram</div>`;
   const isCommitMode=data.mode==='commits';
   if(totalCount>0){
     const modeLabel=isCommitMode?'📝 Commit Search':'📄 Code Search';
@@ -1347,6 +1348,7 @@ function renderContent(data,error,loading) {
     const onePerRepo=document.getElementById('f-one-per-repo').checked;
     const noForkFilter=document.getElementById('f-no-fork').checked;
     const activeFilter=document.getElementById('f-active').checked;
+    const cryptoOnly=document.getElementById('f-crypto-only').checked;
     const cutoff7=activeFilter?Date.now()-7*24*60*60*1000:0;
     const seenRepos=new Set();
     const deduped=items.filter(item=>{
@@ -1359,6 +1361,9 @@ function renderContent(data,error,loading) {
       if(!isCommitMode&&activeFilter){const ds=repo.pushed_at||repo.updated_at;if(ds){const pt=new Date(ds).getTime();if(pt<cutoff7)return false;}}
       if(onePerRepo&&rn&&seenRepos.has(rn)) return false;
       seenRepos.add(rn);
+      // Crypto Only: hanya tampilkan jika ada private key / mnemonic terdeteksi
+      if(cryptoOnly&&!isCommitMode&&!item.valuePreview) return false;
+      if(cryptoOnly&&isCommitMode){const sev=item.severity||'LOW';if(sev!=='CRITICAL'&&sev!=='HIGH') return false;}
       return true;
     });
     deduped.forEach(item=>{
@@ -1495,10 +1500,14 @@ function renderAutoScan() {
   // Queries pills
   document.getElementById('as-queries-list').innerHTML=(as.queries||[]).map(q=>`<span class="q-pill">${esc(q)}</span>`).join('');
 
-  // Findings
-  const findings=as.recentFindings||[];
+  // Findings — tampilkan hanya hasil scan terakhir (latestScanFindings)
+  const findings=as.running?[]:(as.latestScanFindings&&as.latestScanFindings.length?as.latestScanFindings:(as.recentFindings||[]));
   document.getElementById('as-find-cnt').textContent=findings.length||'';
   const list=document.getElementById('as-findings-list');
+  if(as.running) {
+    list.innerHTML=`<div class="card empty"><div class="empty-icon">⏳</div><div class="empty-title">Scan sedang berjalan...</div><div class="empty-sub">Hasil scan sebelumnya dihapus. Temuan baru akan muncul setelah scan selesai.</div></div>`;
+    return;
+  }
   if(findings.length===0) {
     list.innerHTML=`<div class="card empty"><div class="empty-icon">🤖</div><div class="empty-title">Belum ada temuan dari auto-scan</div><div class="empty-sub">${as.enabled?'Temuan baru akan muncul di sini setelah scan berjalan.':'Aktifkan auto-scan untuk mulai monitoring.'}</div></div>`;
     return;
