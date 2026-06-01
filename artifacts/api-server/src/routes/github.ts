@@ -486,6 +486,27 @@ async function enrichRepoMeta(
   return result;
 }
 
+/** Classify commit message severity for commit-search findings. */
+function severityFromCommit(message: string, label: string): "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" {
+  const m = message.toLowerCase();
+  const l = label.toLowerCase();
+  // CRITICAL: direct seed phrase / private key commit
+  if (m.includes("mnemonic") || m.includes("seed phrase") || m.includes("recovery phrase") ||
+      m.includes("private key") || m.includes("privatekey") || m.includes("keypair") ||
+      m.includes("keystore") || m.includes("wallet backup") || m.includes("wallet key") ||
+      l.includes("mnemonic") || l.includes("private key") || l.includes("keypair")) return "CRITICAL";
+  // HIGH: API key or credential commit
+  if (m.includes("api key") || m.includes("api_key") || m.includes("secret key") ||
+      m.includes("add .env") || m.includes("add env") || m.includes("credentials") ||
+      m.includes("wallet") || m.includes("upload key") || m.includes("upload wallet") ||
+      l.includes("api key") || l.includes("api_key") || l.includes(".env") || l.includes("wallet")) return "HIGH";
+  // HIGH: accidental exposure (often reveals that a key was committed then removed)
+  if (m.includes("remove secret") || m.includes("remove key") || m.includes("remove token") ||
+      m.includes("forgot .gitignore") || m.includes("oops") || m.includes("accidentally") ||
+      m.includes("remove sensitive") || m.includes("revert env")) return "HIGH";
+  return "MEDIUM";
+}
+
 const DUMMY_KEY_PATTERNS: RegExp[] = [
   /^0{32,}$/,
   /^f{32,}$/i,
@@ -753,144 +774,54 @@ function queryDelayMs(): number {
   return pick.state.remaining < 8 ? 3500 : BASE_QUERY_DELAY_MS;
 }
 
+// ── Commit Search Queries (used by auto-scan via /search/commits) ─────────────
+// /search/commits returns full repo metadata (pushed_at, fork, stargazers_count)
+// and supports committer-date:>YYYY-MM-DD natively — no enrichment needed.
 const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   // ── Seed phrases & mnemonics ─────────────────────────────────────────────
-  { label: "mnemonic .env",              q: 'filename:.env "MNEMONIC" NOT example NOT sample NOT template' },
-  { label: "PRIVATE_KEY .env",           q: 'filename:.env "PRIVATE_KEY" NOT example NOT sample NOT template' },
-  { label: "seed phrase .env",           q: 'filename:.env "SEED_PHRASE" OR "SECRET_RECOVERY_PHRASE" NOT example NOT sample' },
-  { label: "Trust Wallet mnemonic",      q: '"trustwallet" "mnemonic" extension:json NOT test NOT example' },
-  { label: "MetaMask seed words",        q: '"metamask" "seed" "words" extension:json NOT test NOT example' },
-  { label: "seed phrase JS",             q: '"bip39" "mnemonic" "entropy" language:javascript NOT test NOT spec' },
-  { label: ".env.production key",        q: 'filename:.env.production "PRIVATE_KEY" OR "MNEMONIC"' },
-  { label: ".env.local key",             q: 'filename:.env.local "PRIVATE_KEY" OR "MNEMONIC" NOT example NOT sample' },
+  { label: "commit: add mnemonic",         q: '"add mnemonic" OR "mnemonic added" OR "add seed phrase"' },
+  { label: "commit: add private key",      q: '"add private key" OR "private key added" OR "add privatekey"' },
+  { label: "commit: add wallet",           q: '"add wallet" OR "wallet added" OR "new wallet"' },
+  { label: "commit: add .env",             q: '"add .env" OR "add env file" OR "add environment"' },
+  { label: "commit: upload wallet",        q: '"upload wallet" OR "upload key" OR "upload mnemonic"' },
+  { label: "commit: fix mnemonic",         q: '"fix mnemonic" OR "update mnemonic" OR "change mnemonic"' },
+  { label: "commit: fix private key",      q: '"fix private key" OR "update private key" OR "change private key"' },
+  { label: "commit: add seed",             q: '"add seed" OR "seed phrase" OR "recovery phrase"' },
+  { label: "commit: initial wallet",       q: '"initial wallet" OR "init wallet" OR "wallet setup"' },
+  { label: "commit: add credentials",      q: '"add credentials" OR "credentials added" OR "add creds"' },
 
-  // ── EVM Chains (ETH / BSC / AVAX / MATIC / ARB / OP) ────────────────────
-  { label: "ETH private key .env",       q: 'filename:.env "ETH_PRIVATE_KEY" OR "ETHEREUM_PRIVATE_KEY" NOT example NOT sample' },
-  { label: "BSC private key",            q: 'filename:.env "BSC_PRIVATE_KEY" OR "BNB_PRIVATE_KEY" NOT example NOT sample' },
-  { label: "AVAX private key",           q: 'filename:.env "AVAX_PRIVATE_KEY" OR "AVALANCHE_PRIVATE_KEY" NOT example NOT sample' },
-  { label: "MATIC private key",          q: 'filename:.env "MATIC_PRIVATE_KEY" OR "POLYGON_PRIVATE_KEY" NOT example NOT sample' },
-  { label: "deployer key",               q: '"DEPLOYER_PRIVATE_KEY" filename:.env NOT example NOT sample' },
-  { label: "signer private key",         q: 'filename:.env "SIGNER_PRIVATE_KEY" OR "OPERATOR_PRIVATE_KEY" NOT example NOT sample' },
+  // ── EVM / ETH ────────────────────────────────────────────────────────────
+  { label: "commit: add ETH key",          q: '"add eth" OR "ethereum key" OR "eth private" OR "ETH_PRIVATE_KEY"' },
+  { label: "commit: add deployer",         q: '"deployer key" OR "add deployer" OR "DEPLOYER_PRIVATE_KEY"' },
+  { label: "commit: hardhat config key",   q: '"hardhat" "private key" OR "hardhat" "mnemonic"' },
+  { label: "commit: truffle mnemonic",     q: '"truffle" "mnemonic" OR "truffle-config"' },
+  { label: "commit: add foundry key",      q: '"foundry" "private_key" OR "foundry key"' },
+  { label: "commit: ethers wallet",        q: '"Wallet.fromMnemonic" OR "new ethers.Wallet" OR "Wallet.fromPhrase"' },
+  { label: "commit: viem key",             q: '"privateKeyToAccount" OR "viem" "private key"' },
 
   // ── Solana ────────────────────────────────────────────────────────────────
-  { label: "Solana private key",         q: 'filename:.env "SOLANA_PRIVATE_KEY" OR "SOL_PRIVATE_KEY" NOT example NOT sample' },
-  { label: "Phantom wallet key",         q: 'filename:.env "PHANTOM_PRIVATE_KEY" NOT example NOT sample' },
-  { label: "Solana keypair.json",        q: 'filename:keypair.json extension:json language:json "[" NOT test NOT example' },
-  { label: "Anchor wallet keypair",      q: 'filename:id.json path:.config/solana "[1," OR "[2,"' },
+  { label: "commit: solana keypair",       q: '"solana keypair" OR "Keypair.fromSecretKey" OR "add keypair"' },
+  { label: "commit: solana wallet",        q: '"solana wallet" OR "SOL_PRIVATE_KEY" OR "phantom key"' },
+  { label: "commit: anchor wallet",        q: '"anchor" "wallet" OR "anchor deploy key"' },
 
-  // ── NEAR Protocol ─────────────────────────────────────────────────────────
-  { label: "NEAR private key",           q: 'filename:.env "NEAR_PRIVATE_KEY" OR "NEAR_SECRET" NOT example NOT sample' },
-  { label: "NEAR credentials file",      q: 'filename:credentials.json "ed25519:" path:.near' },
+  // ── Exchange API keys ─────────────────────────────────────────────────────
+  { label: "commit: add binance key",      q: '"binance api" OR "BINANCE_API_KEY" OR "binance key"' },
+  { label: "commit: add bybit key",        q: '"bybit api" OR "BYBIT_API_KEY" OR "bybit key"' },
+  { label: "commit: add okx key",          q: '"okx api" OR "OKX_API_KEY" OR "okex key"' },
+  { label: "commit: add kucoin key",       q: '"kucoin api" OR "KUCOIN_API_KEY" OR "kucoin key"' },
+  { label: "commit: add exchange key",     q: '"exchange api key" OR "api key added" OR "add api key"' },
+  { label: "commit: add indodax",          q: '"indodax" OR "INDODAX_API_KEY" OR "tokocrypto"' },
 
-  // ── Tron / TRX ───────────────────────────────────────────────────────────
-  { label: "Tron private key",           q: 'filename:.env "TRON_PRIVATE_KEY" OR "TRX_PRIVATE_KEY" NOT example NOT sample' },
-  { label: "Tron key JS",                q: 'language:javascript "TronWeb" "privateKey" NOT test NOT spec NOT mock' },
+  // ── Infra / RPC ───────────────────────────────────────────────────────────
+  { label: "commit: add alchemy key",      q: '"alchemy" "api key" OR "ALCHEMY_API_KEY"' },
+  { label: "commit: add infura key",       q: '"infura" "project id" OR "INFURA_PROJECT_ID"' },
+  { label: "commit: add helius key",       q: '"helius" "api key" OR "HELIUS_API_KEY"' },
 
-  // ── Cosmos / Terra / Polkadot ─────────────────────────────────────────────
-  { label: "Cosmos mnemonic",            q: 'filename:.env "COSMOS_MNEMONIC" OR "TERRA_MNEMONIC" NOT example NOT sample' },
-  { label: "Polkadot seed",              q: 'filename:.env "DOT_MNEMONIC" OR "POLKADOT_MNEMONIC" OR "SUBSTRATE_SEED" NOT example NOT sample' },
-
-  // ── Wallet files ─────────────────────────────────────────────────────────
-  { label: "Ethereum keystore.json",     q: 'filename:keystore.json "version" "crypto" "ciphertext" NOT test NOT example' },
-  { label: "UTC-- wallet file",          q: 'filename:UTC-- "ciphertext"' },
-  { label: "wallet.json ciphertext",     q: 'filename:wallet.json "crypto" "ciphertext" NOT test NOT example' },
-  { label: "MetaMask vault",             q: 'filename:vault.json "data" "iv" "salt" NOT test NOT example' },
-  { label: "Exodus wallet backup",       q: 'filename:exodus.wallet.bak OR filename:exodus-backup' },
-  { label: "BIP32 xprv key",            q: '"xprv" extension:json OR extension:txt OR extension:env NOT example NOT test' },
-
-  // ── Exchange API Keys ─────────────────────────────────────────────────────
-  { label: "Binance API key",            q: 'filename:.env "BINANCE_API_KEY" NOT example NOT sample' },
-  { label: "Coinbase API key",           q: 'filename:.env "COINBASE_API_KEY" NOT example NOT sample' },
-  { label: "Kraken API key",             q: 'filename:.env "KRAKEN_API_KEY" NOT example NOT sample' },
-  { label: "Bybit API key",             q: 'filename:.env "BYBIT_API_KEY" NOT example NOT sample' },
-  { label: "OKX API key",               q: 'filename:.env "OKX_API_KEY" OR "OKEX_API_KEY" NOT example NOT sample' },
-  { label: "KuCoin API key",             q: 'filename:.env "KUCOIN_API_KEY" OR "KUCOIN_KEY" NOT example NOT sample' },
-  { label: "Huobi / HTX API key",        q: 'filename:.env "HUOBI_API_KEY" OR "HTX_API_KEY" NOT example NOT sample' },
-  { label: "Gate.io API key",            q: 'filename:.env "GATE_API_KEY" OR "GATEIO_API_KEY" NOT example NOT sample' },
-  { label: "Bitget API key",             q: 'filename:.env "BITGET_API_KEY" NOT example NOT sample' },
-  { label: "MEXC API key",               q: 'filename:.env "MEXC_API_KEY" NOT example NOT sample' },
-  { label: "Indodax / Tokocrypto key",   q: 'filename:.env "INDODAX_API_KEY" OR "TOKOCRYPTO_API_KEY" NOT example NOT sample' },
-
-  // ── Smart contract / DeFi ────────────────────────────────────────────────
-  { label: "Hardhat private key JS",     q: 'filename:hardhat.config.js "PRIVATE_KEY" NOT example NOT test' },
-  { label: "Hardhat private key TS",     q: 'filename:hardhat.config.ts "PRIVATE_KEY" OR "mnemonic" NOT example NOT test' },
-  { label: "Truffle mnemonic",           q: 'filename:truffle-config.js "mnemonic" NOT example NOT test' },
-  { label: "Foundry private_key",        q: 'filename:foundry.toml "private_key" NOT example NOT test' },
-  { label: "Anchor deploy key",          q: 'filename:Anchor.toml "wallet" path:.config/solana' },
-
-  // ── RPC / Node Infrastructure ─────────────────────────────────────────────
-  { label: "Infura Project ID",          q: 'filename:.env "INFURA_PROJECT_ID" NOT example NOT sample' },
-  { label: "Alchemy API key",            q: 'filename:.env "ALCHEMY_API_KEY" NOT example NOT sample' },
-  { label: "Helius API key (Solana)",    q: 'filename:.env "HELIUS_API_KEY" NOT example NOT sample' },
-  { label: "QuickNode token",            q: 'filename:.env "QUICKNODE_TOKEN" OR "QUICKNODE_API_KEY" NOT example NOT sample' },
-  { label: "Moralis API key",            q: 'filename:.env "MORALIS_API_KEY" NOT example NOT sample' },
-  { label: "Ankr API key",              q: 'filename:.env "ANKR_API_KEY" NOT example NOT sample' },
-
-  // ── NFT & IPFS ────────────────────────────────────────────────────────────
-  { label: "Pinata IPFS key",            q: 'filename:.env "PINATA_API_KEY" "PINATA_SECRET" NOT example NOT sample' },
-  { label: "NFT Storage key",            q: 'filename:.env "NFT_STORAGE_API_KEY" NOT example NOT sample' },
-  { label: "OpenSea API key",            q: 'filename:.env "OPENSEA_API_KEY" NOT example NOT sample' },
-
-  // ── GitHub Actions / CI-CD ───────────────────────────────────────────────
-  { label: "PRIVATE_KEY in workflow",    q: 'path:.github/workflows "PRIVATE_KEY" extension:yml NOT example' },
-  { label: "MNEMONIC in workflow",       q: 'path:.github/workflows "MNEMONIC" extension:yml NOT example' },
-  { label: "BEGIN RSA in workflow",      q: 'path:.github/workflows "BEGIN RSA PRIVATE KEY"' },
-  { label: "hardcoded PAT in CI",        q: 'path:.github/workflows "ghp_" OR "github_pat_"' },
-
-  // ── SSH Keys ──────────────────────────────────────────────────────────────
-  { label: "OpenSSH Private Key",        q: '"BEGIN OPENSSH PRIVATE KEY"' },
-  { label: "RSA Private Key",            q: '"BEGIN RSA PRIVATE KEY"' },
-
-  // ── Python ────────────────────────────────────────────────────────────────
-  { label: "Python private key",         q: 'language:python "PRIVATE_KEY" OR "private_key" NOT test NOT spec NOT mock NOT example' },
-  { label: "Python mnemonic",            q: 'language:python "mnemonic" OR "seed_phrase" NOT test NOT spec NOT example' },
-  { label: "Django SECRET_KEY",          q: 'filename:settings.py "SECRET_KEY" NOT "django-insecure" NOT example NOT test' },
-  { label: "Python web3 privateKey",     q: 'language:python "web3" "private_key" NOT "test"' },
-  { label: "Python AWS credential",      q: 'language:python "aws_access_key_id" "aws_secret_access_key"' },
-
-  // ── Go ────────────────────────────────────────────────────────────────────
-  { label: "Go private key",             q: 'language:go "privateKey" OR "PrivateKey" NOT test NOT mock NOT example' },
-  { label: "Go mnemonic",                q: 'language:go "mnemonic" NOT test NOT mock NOT example' },
-  { label: "Go ethclient key",           q: 'language:go "ethclient" "private" NOT test NOT mock' },
-  { label: "Go config private",          q: 'filename:config.go "PRIVATE_KEY" OR "PrivateKey" NOT test NOT example' },
-
-  // ── Rust ──────────────────────────────────────────────────────────────────
-  { label: "Rust private key",           q: 'language:rust "private_key" OR "PRIVATE_KEY" NOT test NOT mock NOT example' },
-  { label: "Rust mnemonic",              q: 'language:rust "mnemonic" NOT test NOT mock NOT example' },
-  { label: "Rust Solana keypair",        q: 'language:rust "solana" "keypair" "secret" NOT test NOT mock' },
-  { label: "Rust ethers key",            q: 'language:rust "ethers" "private_key" NOT test NOT mock' },
-
-  // ── More .env file variants ───────────────────────────────────────────────
-  { label: ".env.staging key",           q: 'filename:.env.staging "PRIVATE_KEY" OR "MNEMONIC"' },
-  { label: ".env.develop key",           q: 'filename:.env.develop "PRIVATE_KEY" OR "MNEMONIC"' },
-  { label: ".env.ci key",                q: 'filename:.env.ci "PRIVATE_KEY" OR "MNEMONIC"' },
-  { label: ".env.test key",              q: 'filename:.env.test "PRIVATE_KEY" OR "MNEMONIC"' },
-  { label: ".env.backup key",            q: 'filename:.env.backup "PRIVATE_KEY" OR "MNEMONIC"' },
-  { label: ".env.prod key",              q: 'filename:.env.prod "PRIVATE_KEY" OR "MNEMONIC"' },
-  { label: ".env.mainnet key",           q: 'filename:.env.mainnet "PRIVATE_KEY" OR "MNEMONIC"' },
-  { label: ".env.testnet key",           q: 'filename:.env.testnet "PRIVATE_KEY" OR "MNEMONIC"' },
-
-  // ── Ethers.js / Web3.js hardcoded patterns ────────────────────────────────
-  { label: "ethers Wallet.fromMnemonic", q: '"Wallet.fromMnemonic" language:javascript NOT test NOT spec NOT mock' },
-  { label: "ethers new Wallet key",      q: '"new ethers.Wallet" language:javascript NOT test NOT spec NOT mock' },
-  { label: "ethers Wallet.fromPhrase",   q: '"Wallet.fromPhrase" language:javascript NOT test NOT spec NOT mock' },
-  { label: "ethers TS Wallet key",       q: '"new ethers.Wallet" language:typescript NOT test NOT spec NOT mock' },
-  { label: "web3 accounts.privateToAccount", q: '"privateToAccount" language:javascript NOT test NOT spec NOT mock' },
-  { label: "viem privateKeyToAccount",   q: '"privateKeyToAccount" language:typescript NOT test NOT spec NOT mock' },
-
-  // ── TypeScript private key patterns ──────────────────────────────────────
-  { label: "TS hardcoded private key",   q: 'language:typescript "PRIVATE_KEY" NOT test NOT spec NOT mock NOT example NOT type' },
-  { label: "TS mnemonic hardcoded",      q: 'language:typescript "mnemonic" NOT test NOT spec NOT mock NOT example NOT interface' },
-
-  // ── Solana JS/TS SDK patterns ─────────────────────────────────────────────
-  { label: "Solana Keypair.fromSecret",  q: '"Keypair.fromSecretKey" NOT test NOT spec NOT mock NOT example' },
-  { label: "Solana bs58 secret key",     q: '"bs58.decode" "secretKey" NOT test NOT spec NOT mock' },
-  { label: "Solana wallet adapter key",  q: '"solanaKeypair" OR "solana_keypair" extension:json NOT test NOT example' },
-
-  // ── Python DeFi / Web3 patterns ──────────────────────────────────────────
-  { label: "Brownie mnemonic config",    q: 'filename:brownie-config.yaml "mnemonic" NOT example NOT test' },
-  { label: "Python eth_account key",     q: 'language:python "eth_account" "private_key" NOT test NOT spec NOT mock' },
-  { label: "Python Account.from_key",    q: 'language:python "Account.from_key" NOT test NOT spec NOT mock' },
+  // ── Accidental commits ────────────────────────────────────────────────────
+  { label: "commit: oops / accident",      q: '"oops" OR "accidentally" OR "remove secret" OR "remove key" OR "delete key"' },
+  { label: "commit: forgot .gitignore",    q: '"forgot .gitignore" OR "add gitignore" OR "fix gitignore"' },
+  { label: "commit: remove sensitive",     q: '"remove sensitive" OR "remove secret" OR "remove token" OR "remove password"' },
+  { label: "commit: revert env",           q: '"revert" ".env" OR "revert env" OR "undo env"' },
   { label: "Python hdwallet mnemonic",   q: 'language:python "HDWallet" "mnemonic" NOT test NOT spec NOT example' },
 
   // ── Deployment & migration scripts ───────────────────────────────────────
@@ -1189,10 +1120,21 @@ async function runAutoScan(): Promise<void> {
   let queueIndex = 0;
   const tokensInUse = new Set<string>();
 
-  interface GHItem {
-    path: string; html_url: string;
-    repository: { full_name: string; pushed_at?: string; updated_at?: string };
-    text_matches?: Array<{ fragment: string }>;
+  // Commit search item shape from /search/commits
+  interface GHCommitItem {
+    sha: string;
+    html_url: string;
+    commit: {
+      message: string;
+      author: { name: string; date: string };
+      committer: { name: string; date: string };
+    };
+    author?: { login: string; html_url: string } | null;
+    repository: {
+      full_name: string; html_url: string;
+      pushed_at?: string; updated_at?: string;
+      stargazers_count?: number; fork?: boolean; archived?: boolean;
+    };
   }
 
   // ── #6 seenLowMedium cleanup (probabilistic 10%) ─────────────────────────
@@ -1201,36 +1143,33 @@ async function runAutoScan(): Promise<void> {
     for (const [url, expiry] of seenLowMedium) { if (expiry < expireNow) seenLowMedium.delete(url); }
   }
 
-  const processPage = (items: GHItem[], label: string, q: string) => {
+  const processCommitPage = (items: GHCommitItem[], label: string, q: string) => {
     for (const item of items) {
       if (blocklist.includes(item.repository.full_name)) continue;
 
-      const snippet = item.text_matches?.[0]?.fragment ?? "";
+      const msg = item.commit.message ?? "";
+      // Use commit URL as the unique key; snippet = first 200 chars of message
+      const snippet = msg.slice(0, 200);
       const key = findingKey(item.html_url, snippet);
       if (seenFindings.has(key)) continue;
 
-      // ── #6 Dedup LOW/MEDIUM by URL (24h TTL) — skip severity() call ──────
-      const lowExpiry = seenLowMedium.get(item.html_url);
-      if (lowExpiry && lowExpiry > Date.now()) continue;
-
-      const sev = severity(item.path, snippet);
+      // Classify by commit message + label
+      const sev = severityFromCommit(msg, label);
       if (sev !== "CRITICAL" && sev !== "HIGH") {
         seenLowMedium.set(item.html_url, Date.now() + SEEN_LOW_TTL_MS);
         continue;
       }
       seenFindings.add(key);
 
-      if (autoScanState.strictMode) {
-        if (sev !== "CRITICAL") continue;
-        if (!CRITICAL_REGEXES.some(re => re.test(item.path + " " + snippet))) continue;
-      }
+      if (autoScanState.strictMode && sev !== "CRITICAL") continue;
 
       const finding: AutoScanFinding = {
         ts: Date.now(), severity: sev,
-        repo: item.repository.full_name, path: item.path,
+        repo: item.repository.full_name,
+        path: `commit:${item.sha.slice(0, 7)} — ${msg.split("\n")[0].slice(0, 80)}`,
         fileUrl: item.html_url, query: q, queryLabel: label,
-        valuePreview: extractValuePreview(snippet, item.path),
-        confidence: confidenceScore(item.path, snippet, sev),
+        valuePreview: "",
+        confidence: sev === "CRITICAL" ? 75 : 55,
       };
       newFindings.push(finding);
       autoScanState.recentFindings.unshift(finding);
@@ -1267,16 +1206,15 @@ async function runAutoScan(): Promise<void> {
       tokensInUse.add(token);
 
       try {
-        // ── #4 Incremental window: per-query date based on last hit ──────────
+        // ── Commit search: native date filter, full repo metadata ─────────────
         const windowDays = queryWindowDays(label);
-        // Note: pushed:> and fork:false are NOT usable in code search.
-        // pushed:> is syntactically accepted but always returns 0 results.
-        // fork:false returns 422. Neither qualifier works in /search/code.
-        // Age filtering is done client-side via filterRecentRepos (uses repo.pushed_at).
-        const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=30&page=1&sort=indexed&order=desc`;
+        const sinceDate = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000)
+          .toISOString().slice(0, 10); // YYYY-MM-DD
+        const qWithDate = `${q} committer-date:>${sinceDate}`;
+        const url = `https://api.github.com/search/commits?q=${encodeURIComponent(qWithDate)}&per_page=30&page=1&sort=committer-date&order=desc`;
         const headers: Record<string, string> = {
           Authorization: `token ${token}`,
-          Accept: "application/vnd.github.text-match+json",
+          Accept: "application/vnd.github+json",
           "X-GitHub-Api-Version": "2022-11-28",
           "User-Agent": "GH-Dork/2.0",
         };
@@ -1295,33 +1233,31 @@ async function runAutoScan(): Promise<void> {
           autoScanState.queriesSkipped++; continue;
         }
         if (r.status === 403 || r.status === 429) {
-          // Rate limit hit — not an auth error; mark exhausted and wait for reset
           tokenPool.update(token, 0, resetSec);
           const retryAfter = r.headers.get("retry-after");
           logger.warn({ status: r.status, token: `...${token.slice(-4)}`, label, resetSec, retryAfter }, "Auto-scan: token rate limited");
           autoScanState.queriesSkipped++; continue;
         }
         if (r.status === 422) {
-          // Invalid query syntax — log body for debugging and skip
           const errBody = await r.text().catch(() => "");
-          logger.warn({ q, body: errBody.slice(0, 200) }, "Auto-scan: invalid query (422), skipping");
+          logger.warn({ q: qWithDate, body: errBody.slice(0, 200) }, "Auto-scan: invalid query (422), skipping");
           autoScanState.queriesSkipped++; continue;
         }
         if (!r.ok) {
-          logger.warn({ status: r.status, q }, "Auto-scan non-OK");
+          logger.warn({ status: r.status, q: qWithDate }, "Auto-scan non-OK");
           autoScanState.queriesSkipped++; continue;
         }
 
-        const data = (await r.json()) as { items: GHItem[] };
+        const data = (await r.json()) as { items: GHCommitItem[] };
         autoScanState.queriesCompleted++;
         scanProgress.completed = autoScanState.queriesCompleted + autoScanState.queriesSkipped;
         if (scanProgress.total > 0) {
           scanProgress.percent = Math.min(100, Math.round((scanProgress.completed / scanProgress.total) * 100));
           notifySseClients("scan-progress", { completed: scanProgress.completed, total: scanProgress.total, percent: scanProgress.percent, running: true });
         }
-        logger.info({ label, results: data.items?.length ?? 0, remaining: state.remaining, windowDays, token: `...${token.slice(-4)}` }, "Auto-scan query done");
+        logger.info({ label, results: data.items?.length ?? 0, remaining: state.remaining, windowDays, token: `...${token.slice(-4)}` }, "Auto-scan commit query done");
 
-        processPage(filterRecentRepos(data.items ?? []), label, q);
+        processCommitPage(data.items ?? [], label, q);
 
         if ((data.items?.length ?? 0) >= 30 && state.remaining > 5) {
           try {
@@ -1330,11 +1266,11 @@ async function runAutoScan(): Promise<void> {
             const rst2 = r2.headers.get("x-ratelimit-reset");
             if (rem2 >= 0) tokenPool.update(token, rem2, rst2 ? parseInt(rst2, 10) : null);
             if (r2.ok) {
-              const data2 = (await r2.json()) as { items: GHItem[] };
-              processPage(filterRecentRepos(data2.items ?? []), label, q);
-              logger.info({ label, p2: data2.items?.length ?? 0 }, "Auto-scan page 2 fetched");
+              const data2 = (await r2.json()) as { items: GHCommitItem[] };
+              processCommitPage(data2.items ?? [], label, q);
+              logger.info({ label, p2: data2.items?.length ?? 0 }, "Auto-scan commit page 2 fetched");
             }
-          } catch (p2err) { logger.warn({ err: p2err, q }, "Auto-scan page 2 error (non-fatal)"); }
+          } catch (p2err) { logger.warn({ err: p2err, q: qWithDate }, "Auto-scan page 2 error (non-fatal)"); }
         }
       } catch (err) {
         logger.warn({ err, q }, "Auto-scan query error");
@@ -1525,6 +1461,7 @@ router.get("/github/search", async (req, res) => {
   const page = parseInt((req.query["page"] as string) ?? "1", 10) || 1;
   const perPage = Math.min(parseInt((req.query["per_page"] as string) ?? "30", 10) || 30, 100);
   const notify = (req.query["notify"] as string) !== "false";
+  const mode = (req.query["mode"] as string) === "commits" ? "commits" : "code";
 
   if (!q || !q.trim()) {
     res.status(400).json({ error: "Missing query parameter q" });
@@ -1554,9 +1491,67 @@ router.get("/github/search", async (req, res) => {
 
   const { token } = picked;
 
-  // Note: pushed:> and fork:false do NOT work in /search/code.
-  // pushed:> is syntactically accepted but always returns 0 results.
-  // fork:false returns 422. Query is sent as-is; date/fork filtering is client-side.
+  // ── COMMIT SEARCH MODE ────────────────────────────────────────────────────
+  if (mode === "commits") {
+    const url = `https://api.github.com/search/commits?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&sort=committer-date&order=desc`;
+    const headers: Record<string, string> = {
+      Authorization: `token ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "GH-Dork/2.0",
+    };
+    try {
+      const r = await fetch(url, { headers });
+      const remaining = parseInt(r.headers.get("x-ratelimit-remaining") ?? "-1", 10);
+      const resetSec = r.headers.get("x-ratelimit-reset") ? parseInt(r.headers.get("x-ratelimit-reset")!, 10) : null;
+      if (remaining >= 0) tokenPool.update(token, remaining, resetSec);
+
+      if (r.status === 401) { tokenPool.flagError(token); tokenPool.update(token, 0, resetSec); res.status(401).json({ error: "GitHub token invalid or expired." }); return; }
+      if (r.status === 403) { tokenPool.update(token, 0, resetSec); res.status(429).json({ error: `Rate limit exceeded. Resets at ${resetSec ? new Date(resetSec * 1000).toISOString() : "unknown"}.` }); return; }
+      if (r.status === 422) { const b = (await r.json()) as { message?: string }; res.status(422).json({ error: b.message ?? "Query validation failed." }); return; }
+      if (!r.ok) { res.status(r.status).json({ error: `GitHub API error: ${r.status}` }); return; }
+
+      interface GHCommitSearchResponse {
+        total_count: number; incomplete_results: boolean;
+        items: Array<{
+          sha: string; html_url: string;
+          commit: { message: string; author: { name: string; date: string }; committer: { name: string; date: string } };
+          author?: { login: string; html_url: string; avatar_url: string } | null;
+          repository: { full_name: string; html_url: string; description?: string; stargazers_count: number; pushed_at: string; updated_at: string; fork: boolean; archived: boolean };
+        }>;
+      }
+      const data = (await r.json()) as GHCommitSearchResponse;
+      // Enrich each commit item with severity based on commit message
+      const enriched = data.items.map((item) => {
+        const sev = severityFromCommit(item.commit.message, "");
+        return { ...item, severity: sev, mode: "commits" };
+      });
+      if (notify) {
+        const freshCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const hits: Finding[] = enriched
+          .filter((i) => {
+            if (i.severity !== "CRITICAL" && i.severity !== "HIGH") return false;
+            const d = new Date(i.commit.committer.date ?? i.commit.author.date ?? 0).getTime();
+            return d >= freshCutoff;
+          })
+          .map((i) => ({
+            severity: i.severity,
+            repo: i.repository.full_name,
+            path: `commit:${i.sha.slice(0, 7)} — ${i.commit.message.split("\n")[0].slice(0, 80)}`,
+            fileUrl: i.html_url,
+            snippet: i.commit.message.slice(0, 200),
+          }));
+        if (hits.length > 0) void sendTelegram(q, hits);
+      }
+      res.json({ ...data, items: enriched, mode: "commits" });
+    } catch (err) {
+      req.log.error({ err }, "GitHub commit search failed");
+      res.status(502).json({ error: "Failed to reach GitHub API" });
+    }
+    return;
+  }
+
+  // ── CODE SEARCH MODE (kept as fallback) ───────────────────────────────────
   const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&sort=indexed&order=desc`;
   const headers: Record<string, string> = {
     Authorization: `token ${token}`,
@@ -1581,10 +1576,7 @@ router.get("/github/search", async (req, res) => {
     }
     if (r.status === 403) {
       tokenPool.update(token, 0, resetSec);
-      const resetTime = resetSec
-        ? new Date(resetSec * 1000).toISOString()
-        : "unknown";
-      res.status(429).json({ error: `Rate limit exceeded. Resets at ${resetTime}.` });
+      res.status(429).json({ error: `Rate limit exceeded. Resets at ${resetSec ? new Date(resetSec * 1000).toISOString() : "unknown"}.` });
       return;
     }
     if (r.status === 422) {
@@ -1598,36 +1590,21 @@ router.get("/github/search", async (req, res) => {
     }
 
     interface GitHubSearchResponse {
-      total_count: number;
-      incomplete_results: boolean;
+      total_count: number; incomplete_results: boolean;
       items: Array<{
-        name: string;
-        path: string;
-        html_url: string;
+        name: string; path: string; html_url: string;
         repository: { full_name: string; html_url: string; stargazers_count: number; pushed_at: string; updated_at: string; fork: boolean; archived: boolean };
-        text_matches?: Array<{ fragment: string }>;
+        text_matches?: Array<{ fragment: string; matches?: Array<{ text: string; indices: number[] }> }>;
       }>;
     }
-
     const data = (await r.json()) as GitHubSearchResponse;
-
-    // Enrich repo metadata: GitHub code search API omits pushed_at, stargazers_count,
-    // fork, archived. Fetch them in parallel (cached 1h) so client filters actually work.
-    const uniqueRepos = [...new Set(data.items.map((i) => i.repository.full_name))];
-    const repoMeta = await enrichRepoMeta(uniqueRepos, token);
-
     const enriched = data.items.map((item) => {
-      const meta = repoMeta.get(item.repository.full_name);
-      const repository = meta
-        ? { ...item.repository, pushed_at: meta.pushed_at, updated_at: meta.updated_at, stargazers_count: meta.stargazers_count, fork: meta.fork, archived: meta.archived }
-        : item.repository;
       const snippet = item.text_matches?.[0]?.fragment ?? "";
       const sev = severity(item.path, snippet);
-      return { ...item, repository, severity: sev, snippet, valuePreview: extractValuePreview(snippet, item.path), confidence: confidenceScore(item.path, snippet, sev) };
+      return { ...item, severity: sev, snippet, valuePreview: extractValuePreview(snippet, item.path), confidence: confidenceScore(item.path, snippet, sev), mode: "code" };
     });
 
     if (notify) {
-      // Only notify for repos pushed within the last 7 days — skip old stale findings
       const freshCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const hits: Finding[] = enriched
         .filter((i) => {
@@ -1635,17 +1612,11 @@ router.get("/github/search", async (req, res) => {
           const repoDate = new Date(i.repository.pushed_at ?? i.repository.updated_at ?? 0).getTime();
           return repoDate >= freshCutoff;
         })
-        .map((i) => ({
-          severity: i.severity,
-          repo: i.repository.full_name,
-          path: i.path,
-          fileUrl: i.html_url,
-          snippet: i.snippet,
-        }));
+        .map((i) => ({ severity: i.severity, repo: i.repository.full_name, path: i.path, fileUrl: i.html_url, snippet: i.snippet }));
       if (hits.length > 0) void sendTelegram(q, hits);
     }
 
-    res.json({ ...data, items: enriched });
+    res.json({ ...data, items: enriched, mode: "code" });
   } catch (err) {
     req.log.error({ err }, "GitHub search failed");
     res.status(502).json({ error: "Failed to reach GitHub API" });

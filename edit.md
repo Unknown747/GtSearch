@@ -1,5 +1,20 @@
 # Edit History — GH Dork
 
+## 2026-06-01 — Session 11: Migrasi ke Commit Search (Frontend Selesai)
+
+### #49 Frontend Commit Search — Mode Toggle, Commit Cards, Batch & DORKS
+- **File:** `artifacts/api-server/public/index.html`
+- **Mode toggle UI:** Tombol 📝 Commit Search / 📄 Code Search di bawah search bar, dengan hint teks dan placeholder dinamis
+- **CSS baru:** `.mode-toggle-row`, `.mode-btn`, `.mode-btn.active`, `.mode-hint`, `.commit-card`, `.commit-msg-box`, `.commit-msg-text`, `.commit-msg-more`, `.commit-sha`, `.commit-author`, `.meta-sep`
+- **`setSearchMode(mode)`:** Toggle mode antara `'commits'` dan `'code'`, update tombol aktif + hint
+- **`doSearch()`:** Logika filter berbeda per mode — commit mode: append `committer-date:>${since}` (native) jika Recent 7d, append `fork:false` jika Exclude forks; code mode: `fork:true` lama
+- **`runSearch()`:** Append `&mode=${S.searchMode}` ke URL fetch
+- **`renderContent()`:** Deteksi `data.mode==='commits'` untuk render commit card vs code card. Commit card: repo + sha link, author (@login atau name), freshBadge(commitDate), stars, commit message dengan expand "…lihat selengkapnya". Sort berdasarkan `commit.committer.date` (commit mode) atau `repository.pushed_at` (code mode)
+- **`runBatch()`:** Pakai `S.searchMode`, filter berbeda per mode, kirim `&mode=` ke API, render `{items, total_count, mode}`
+- **DORKS library:** Diperbarui ke 8 kategori commit-search queries (74 → 58 queries) — fokus pada commit messages seperti "add mnemonic", "add private key", "accidental exposure", per chain/exchange
+- **Hapus filter `f-age`** (usia repo tahun dibuat) dari filter row — tidak relevan untuk commit search
+- Typecheck clean ✅, build sukses ✅, server restart ✅
+
 ## 2026-06-01 — Session 10: Migrasi Replit + Audit Bug
 
 ### #44 Migrasi ke Replit Environment
