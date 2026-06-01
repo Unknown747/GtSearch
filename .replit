@@ -24,13 +24,13 @@ args = "GH Dork Web"
 name = "GH Dork Web"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run dev"
-waitForPort = 8080
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/api-server dev"
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -40,6 +40,10 @@ integrations = ["javascript_gemini_ai_integrations:2.0.0"]
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
 
 [[ports]]
 localPort = 8080
@@ -59,4 +63,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-PORT = "8080"
+PORT = "5000"
