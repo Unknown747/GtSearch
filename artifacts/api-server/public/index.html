@@ -1346,6 +1346,8 @@ function renderContent(data,error,loading) {
     const ignored=S.ignoredUrls;
     const onePerRepo=document.getElementById('f-one-per-repo').checked;
     const noForkFilter=document.getElementById('f-no-fork').checked;
+    const activeFilter=document.getElementById('f-active').checked;
+    const cutoff7=activeFilter?Date.now()-7*24*60*60*1000:0;
     const seenRepos=new Set();
     const deduped=items.filter(item=>{
       const u=item.html_url||'';
@@ -1353,6 +1355,8 @@ function renderContent(data,error,loading) {
       const repo=item.repository||{};
       const rn=repo.full_name||'';
       if(noForkFilter&&repo.fork) return false;
+      // Code mode: client-side date filter (commit mode applies it natively via committer-date:>)
+      if(!isCommitMode&&activeFilter){const ds=repo.pushed_at||repo.updated_at;if(ds){const pt=new Date(ds).getTime();if(pt<cutoff7)return false;}}
       if(onePerRepo&&rn&&seenRepos.has(rn)) return false;
       seenRepos.add(rn);
       return true;
@@ -1370,8 +1374,10 @@ function renderContent(data,error,loading) {
         // ── COMMIT CARD ──────────────────────────────────────────────────────
         const c=item.commit||{};
         const msg=c.message||'';
-        const msgFirst=esc(msg.split('\n')[0].slice(0,120));
-        const msgRest=msg.split('\n').slice(1).join('\n').trim();
+        const msgLines=msg.split('\n');
+        const msgFirst=esc(msgLines[0].slice(0,120));
+        const msgFull=esc(msg.slice(0,600));
+        const hasMore=msg.length>msgLines[0].length;
         const commitDate=c.committer?.date||c.author?.date||'';
         const author=item.author?.login?`<a href="${esc(item.author.html_url||'#')}" target="_blank" rel="noopener" class="commit-author">@${esc(item.author.login)}</a>`:`<span class="commit-author">${esc(c.author?.name||'unknown')}</span>`;
         const sha=item.sha?item.sha.slice(0,7):'';
@@ -1398,8 +1404,7 @@ function renderContent(data,error,loading) {
           </div>
           <div class="commit-msg-box">
             <span class="commit-msg-icon">💬</span>
-            <span class="commit-msg-text">${msgFirst}${msgRest?`<span class="commit-msg-more" onclick="this.previousSibling.textContent+=${JSON.stringify('\n'+msgRest)};this.remove()"> …lihat selengkapnya</span>`:''}
-            </span>
+            <span class="commit-msg-text" data-full="${msgFull}">${msgFirst}${hasMore?'<span class="commit-msg-more" onclick="var t=this.parentElement;t.textContent=t.dataset.full;"> …lihat selengkapnya</span>':''}</span>
           </div>
         </div>`;
       } else {

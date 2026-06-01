@@ -1,5 +1,26 @@
 # Edit History — GH Dork
 
+## 2026-06-01 — Session 11: Audit & Bug Fixes
+
+### #50 Audit — 3 Bug Ditemukan dan Diperbaiki
+
+**Bug #1 — KRITIS (backend): `AUTO_SCAN_QUERIES` campur syntax code-search**
+- Lines 825–854 sebelumnya berisi 21 query dengan qualifier `filename:`, `language:`, `path:`, `extension:` — tidak valid di `/search/commits`, menyebabkan 422 error di setiap auto-scan
+- **Fix:** Ganti semua 21 query code-search dengan 21 commit-search query baru (BSC key, Polygon key, AVAX, Arbitrum, Tron, NEAR, Cosmos, signer, relayer, flashbots, hardhat deploy, dll)
+- **File:** `artifacts/api-server/src/routes/github.ts`
+
+**Bug #2 (frontend): Tombol "lihat selengkapnya" pada commit card rusak**
+- `JSON.stringify('\n'+msgRest)` menghasilkan string dengan double-quote `"` yang memutus atribut `onclick` HTML → tombol expand tidak berfungsi
+- **Fix:** Simpan teks penuh di `data-full` attribute pada `<span class="commit-msg-text">`, onclick mengambil `this.parentElement.dataset.full` dan set `textContent` — tidak ada string interpolasi berbahaya
+- **File:** `artifacts/api-server/public/index.html`
+
+**Bug #3 — Regresi (frontend): Filter Recent (7d) tidak efek di code mode**
+- `renderContent` baru menghapus client-side date filter dari `deduped.filter()` — di code mode, centang Recent (7d) tidak melakukan apa-apa
+- **Fix:** Restore filter `pushed_at/updated_at < cutoff7` hanya untuk `!isCommitMode` (commit mode tetap pakai native `committer-date:>` di query)
+- **File:** `artifacts/api-server/public/index.html`
+
+Typecheck clean ✅, build sukses ✅, server restart ✅
+
 ## 2026-06-01 — Session 11: Migrasi ke Commit Search (Frontend Selesai)
 
 ### #49 Frontend Commit Search — Mode Toggle, Commit Cards, Batch & DORKS

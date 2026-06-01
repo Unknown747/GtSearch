@@ -822,36 +822,29 @@ const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   { label: "commit: forgot .gitignore",    q: '"forgot .gitignore" OR "add gitignore" OR "fix gitignore"' },
   { label: "commit: remove sensitive",     q: '"remove sensitive" OR "remove secret" OR "remove token" OR "remove password"' },
   { label: "commit: revert env",           q: '"revert" ".env" OR "revert env" OR "undo env"' },
-  { label: "Python hdwallet mnemonic",   q: 'language:python "HDWallet" "mnemonic" NOT test NOT spec NOT example' },
 
-  // ── Deployment & migration scripts ───────────────────────────────────────
-  { label: "deploy.js private key",      q: 'filename:deploy.js "PRIVATE_KEY" OR "privateKey" NOT test NOT example' },
-  { label: "deploy.ts private key",      q: 'filename:deploy.ts "PRIVATE_KEY" OR "privateKey" NOT test NOT example' },
-  { label: "deploy.py private key",      q: 'filename:deploy.py "PRIVATE_KEY" OR "private_key" NOT test NOT example' },
-  { label: "migration private key",      q: 'filename:migrate.js "PRIVATE_KEY" OR "mnemonic" NOT test NOT example' },
-  { label: "script dir .env private",   q: 'path:scripts filename:.env "PRIVATE_KEY" OR "MNEMONIC"' },
-
-  // ── CI/CD infrastructure files ────────────────────────────────────────────
-  { label: "docker-compose PRIVATE_KEY", q: 'filename:docker-compose.yml "PRIVATE_KEY" OR "MNEMONIC" NOT example' },
-  { label: "CircleCI private key",       q: 'path:.circleci "PRIVATE_KEY" OR "MNEMONIC" NOT example' },
-  { label: "GitLab CI private key",      q: 'filename:.gitlab-ci.yml "PRIVATE_KEY" OR "MNEMONIC" NOT example' },
-  { label: "Jenkinsfile private key",    q: 'filename:Jenkinsfile "PRIVATE_KEY" OR "MNEMONIC" NOT example' },
-
-  // ── Config & secrets files ────────────────────────────────────────────────
-  { label: "config.json private key",    q: 'filename:config.json "private_key" OR "privateKey" NOT test NOT example' },
-  { label: "config.yaml private key",    q: 'filename:config.yaml "private_key" OR "mnemonic" NOT test NOT example' },
-  { label: "config.yml private key",     q: 'filename:config.yml "private_key" OR "mnemonic" NOT test NOT example' },
-  { label: "secrets.json private key",   q: 'filename:secrets.json "private_key" OR "mnemonic" NOT test' },
-  { label: "secrets.yaml private key",   q: 'filename:secrets.yaml "private_key" OR "mnemonic" NOT test' },
-  { label: "appsettings private key",    q: 'filename:appsettings.json "privateKey" OR "mnemonic" NOT test NOT example' },
-
-  // ── Terraform / IaC patterns ──────────────────────────────────────────────
-  { label: "Terraform private key",      q: 'filename:terraform.tfvars "private_key" OR "mnemonic" NOT example' },
-  { label: "Terraform env private key",  q: 'extension:tf "private_key" NOT variable NOT example NOT test' },
-
-  // ── Jupyter Notebooks (data science / quant) ──────────────────────────────
-  { label: "Jupyter private key",        q: 'extension:ipynb "private_key" OR "PRIVATE_KEY" NOT example NOT test' },
-  { label: "Jupyter mnemonic",           q: 'extension:ipynb "mnemonic" NOT example NOT test' },
+  // ── Additional commit patterns ────────────────────────────────────────────
+  { label: "commit: add secret key",     q: '"add secret key" OR "secret key added" OR "add secret"' },
+  { label: "commit: hardhat deploy",     q: '"hardhat deploy" OR "deploy hardhat" OR "hardhat network"' },
+  { label: "commit: add BSC key",        q: '"BSC_PRIVATE_KEY" OR "BNB_PRIVATE_KEY" OR "bsc key"' },
+  { label: "commit: add Polygon key",    q: '"MATIC_PRIVATE_KEY" OR "POLYGON_PRIVATE_KEY" OR "polygon key"' },
+  { label: "commit: add AVAX key",       q: '"AVAX_PRIVATE_KEY" OR "avalanche key" OR "avax key"' },
+  { label: "commit: add Arbitrum key",   q: '"ARB_PRIVATE_KEY" OR "arbitrum key" OR "arb key"' },
+  { label: "commit: add Tron key",       q: '"TRON_PRIVATE_KEY" OR "TRX_PRIVATE_KEY" OR "tron key"' },
+  { label: "commit: add NEAR key",       q: '"NEAR_PRIVATE_KEY" OR "near key" OR "near wallet"' },
+  { label: "commit: add Cosmos key",     q: '"COSMOS_MNEMONIC" OR "terra mnemonic" OR "cosmos key"' },
+  { label: "commit: add signer key",     q: '"SIGNER_PRIVATE_KEY" OR "signer key" OR "operator key"' },
+  { label: "commit: add relayer key",    q: '"RELAYER_PRIVATE_KEY" OR "relayer key"' },
+  { label: "commit: add flashbots key",  q: '"FLASHBOTS_RELAY_KEY" OR "flashbots key"' },
+  { label: "commit: add rpc key",        q: '"QUICKNODE_TOKEN" OR "MORALIS_API_KEY" OR "quicknode key"' },
+  { label: "commit: add explorer key",   q: '"ETHERSCAN_API_KEY" OR "BSCSCAN_API_KEY" OR "etherscan key"' },
+  { label: "commit: fix deploy",         q: '"fix deploy" OR "update deploy" OR "fix deployment"' },
+  { label: "commit: init project",       q: '"initial commit" "key" OR "first commit" "wallet"' },
+  { label: "commit: add config",         q: '"add config" "private" OR "update config" "private"' },
+  { label: "commit: wip credentials",   q: '"wip" "credential" OR "temp" "private key" OR "test" "mnemonic"' },
+  { label: "commit: hotfix key",         q: '"hotfix" "key" OR "quick fix" "token" OR "urgent" "key"' },
+  { label: "commit: pinata key",         q: '"PINATA_API_KEY" OR "pinata key" OR "PINATA_SECRET"' },
+  { label: "commit: add gemini key",     q: '"GEMINI_API_KEY" OR "gemini key" OR "gemini api"' },
 ];
 
 export interface AutoScanFinding {
