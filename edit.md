@@ -1,5 +1,27 @@
 # Edit History — GH Dork
 
+## 2026-06-01 — Session 16: Restore Code Search (Auto-Detect Mode)
+
+### #57 Auto-Detect Code Search vs Commit Search
+- **Masalah:** Dork custom user (`filename:hardhat.config.js`, `extension:pem`, dll) adalah code search queries, namun backend hardcoded commit search → hasil tidak relevan.
+- **Solusi:** Auto-deteksi mode dari query tanpa toggle visible. Jika query mengandung `filename:`, `extension:`, `path:`, atau `language:` → code search API; selainnya → commit search API.
+- **Backend `github.ts`:**
+  - Ganti `const mode = "commits"` → deteksi otomatis dari query + param opsional
+  - Restore seluruh blok code search (`/search/code` API, `text-match+json` Accept header)
+  - Per-item AI validation via `validateWithAI` + `extractValuePreview` + `confidenceScore`
+  - Telegram notify untuk code search (valuePreview atau CRITICAL/HIGH)
+  - Response include `mode: "code"` atau `mode: "commits"` untuk frontend
+- **Frontend `index.html`:**
+  - Tambah fungsi `isCodeQuery(q)` — regex detect code qualifiers
+  - `doSearch()`: auto-detect mode, apply filter berbeda per mode (commit: tambah `committer-date:` + `fork:false`; code: tambah `fork:true` jika unchecked)
+  - `runSearch()`: kirim `mode=` dari `S.activeMode`
+  - `renderContent()`: restore `isCommitMode` flag, info bar label dinamis (`📝 Commit Search` / `📄 Code Search`), sort berdasarkan date field yang tepat per mode
+  - Restore Code Card rendering (path, snippet highlight, valuePreview, confidence badge, preview button, explorer links)
+  - Filter `cryptoOnly` dibedakan per mode (code: cek `valuePreview`; commit: cek severity)
+  - Filter `activeFilter` untuk code mode: filter by `repo.pushed_at` (bukan commit date)
+  - Tambah `S.activeMode` ke state object
+  - Batch search: auto-detect mode per query, apply filter yang benar
+
 ## 2026-06-01 — Session 15: Hapus Code Search + Audit & Cleanup
 
 ### #56 Hapus Code Search Sepenuhnya (Manual + Auto + Backend)

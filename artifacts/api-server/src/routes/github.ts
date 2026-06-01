@@ -1483,7 +1483,10 @@ router.get("/github/search", async (req, res) => {
   const page = parseInt((req.query["page"] as string) ?? "1", 10) || 1;
   const perPage = Math.min(parseInt((req.query["per_page"] as string) ?? "30", 10) || 30, 100);
   const notify = (req.query["notify"] as string) !== "false";
-  const mode = "commits";
+  // Auto-detect mode: if query has code-search qualifiers → code, else → commits
+  const modeParam = req.query["mode"] as string | undefined;
+  const hasCodeQualifiers = /\b(filename:|extension:|path:|language:)/.test(q ?? "");
+  const mode = (modeParam === "code" || hasCodeQualifiers) ? "code" : "commits";
 
   if (!q || !q.trim()) {
     res.status(400).json({ error: "Missing query parameter q" });
@@ -1573,6 +1576,59 @@ router.get("/github/search", async (req, res) => {
     return;
   }
 
+  // ── CODE SEARCH ───────────────────────────────────────────────────────────
+  const codeUrl = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&sort=indexed&order=desc`;
+  const codeHeaders: Record<string, string> = {
+    Authorization: `token ${token}`,
+    Accept: "application/vnd.github.text-match+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "GH-Dork/2.0",
+  };
+  try {
+    const r = await fetch(codeUrl, { headers: codeHeaders });
+    const remaining = parseInt(r.headers.get("x-ratelimit-remaining") ?? "-1", 10);
+    const resetSec = r.headers.get("x-ratelimit-reset") ? parseInt(r.headers.get("x-ratelimit-reset")!, 10) : null;
+    if (remaining >= 0) tokenPool.update(token, remaining, resetSec);
+
+    if (r.status === 401) { tokenPool.flagError(token); tokenPool.update(token, 0, resetSec); res.status(401).json({ error: "GitHub token invalid or expired." }); return; }
+    if (r.status === 403) { tokenPool.update(token, 0, resetSec); res.status(429).json({ error: `Rate limit exceeded. Resets at ${resetSec ? new Date(resetSec * 1000).toISOString() : "unknown"}.` }); return; }
+    if (r.status === 422) { const b = (await r.json()) as { message?: string }; res.status(422).json({ error: b.message ?? "Query validation failed." }); return; }
+    if (!r.ok) { res.status(r.status).json({ error: `GitHub API error: ${r.status}` }); return; }
+
+    interface GHCodeSearchResponse {
+      total_count: number; incomplete_results: boolean;
+      items: Array<{
+        name: string; path: string; html_url: string;
+        repository: { full_name: string; html_url: string; stargazers_count: number; pushed_at: string; updated_at: string; fork: boolean; archived: boolean };
+        text_matches?: Array<{ fragment: string; matches?: Array<{ text: string; indices: number[] }> }>;
+      }>;
+    }
+    const data = (await r.json()) as GHCodeSearchResponse;
+    const enriched = await Promise.all(data.items.map(async (item) => {
+      const snippet = item.text_matches?.[0]?.fragment ?? "";
+      const sev = severity(item.path, snippet);
+      const vp = extractValuePreview(snippet, item.path);
+      const baseConf = confidenceScore(item.path, snippet, sev);
+      let aiValidated = false; let aiType: string | undefined; let finalConf = baseConf;
+      if (vp) {
+        try {
+          const aiRes = await validateWithAI(vp, vp.split(":")[0].trim());
+          if (aiRes.confidence > 0) { aiValidated = true; aiType = aiRes.type; finalConf = Math.round((baseConf + aiRes.confidence) / 2); }
+        } catch { /* non-fatal */ }
+      }
+      return { ...item, severity: sev, snippet, valuePreview: vp, confidence: finalConf, aiValidated, aiType, mode: "code" };
+    }));
+    if (notify) {
+      const hits: Finding[] = enriched
+        .filter(i => !!i.valuePreview || i.severity === "CRITICAL" || i.severity === "HIGH")
+        .map(i => ({ severity: i.severity, repo: i.repository.full_name, path: i.path, fileUrl: i.html_url, snippet: i.snippet, valuePreview: i.valuePreview }));
+      void sendTelegram(q, hits);
+    }
+    res.json({ ...data, items: enriched, mode: "code" });
+  } catch (err) {
+    req.log.error({ err }, "GitHub code search failed");
+    res.status(502).json({ error: "Failed to reach GitHub API" });
+  }
 });
 
 // ── POST /api/github/notify-test ──────────────────────────────────────────────

@@ -901,6 +901,7 @@ const S = {
   autoScan: null,
   openCats: new Set(),
   sortBySev: true,
+  activeMode: 'commits',
   seenUrls: new Set(),
   ignoredUrls: new Set(JSON.parse(localStorage.getItem('gh_dork_ignored')||'[]')),
 };
@@ -1249,18 +1250,24 @@ function pickDork(ci,di) {
   document.getElementById('q-input').value=q;
   doSearch();
 }
+function isCodeQuery(q){return /\b(filename:|extension:|path:|language:)/.test(q);}
 function doSearch() {
   let q=document.getElementById('q-input').value.trim(); if(!q) return;
   const scope=document.getElementById('scope-input').value.trim();
   if(scope) q+=` user:${scope}`;
-  if(document.getElementById('f-active').checked){
-    const since=new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10);
-    if(!q.includes('committer-date:')) q+=` committer-date:>${since}`;
+  const mode=isCodeQuery(q)?'code':'commits';
+  if(mode==='commits'){
+    if(document.getElementById('f-active').checked){
+      const since=new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10);
+      if(!q.includes('committer-date:')) q+=` committer-date:>${since}`;
+    }
+    if(document.getElementById('f-no-fork').checked) q+=' fork:false';
+  } else {
+    if(!document.getElementById('f-no-fork').checked) q+=' fork:true';
   }
-  if(document.getElementById('f-no-fork').checked) q+=' fork:false';
   S.sortBySev=document.getElementById('f-sort-sev').checked;
   S.seenUrls=new Set();
-  S.activeQuery=q; S.page=1; runSearch();
+  S.activeMode=mode; S.activeQuery=q; S.page=1; runSearch();
 }
 async function runSearch() {
   if(!S.activeQuery) return;
@@ -1269,7 +1276,7 @@ async function runSearch() {
   document.getElementById('btn-copy-q').onclick=()=>copyText(S.activeQuery);
   S.loading=true; renderContent(null,null,true);
   try {
-    const url=`/api/github/search?q=${encodeURIComponent(S.activeQuery)}&per_page=30&page=${S.page}&mode=commits`;
+    const url=`/api/github/search?q=${encodeURIComponent(S.activeQuery)}&per_page=30&page=${S.page}&mode=${S.activeMode||'commits'}`;
     const r=await fetch(url);
     const data=await r.json();
     if(!r.ok) throw new Error(data.error||`Server error: ${r.status}`);
@@ -1291,9 +1298,11 @@ function renderContent(data,error,loading) {
   const tgOk=S.config&&S.config.telegramConfigured;
   const sortLabel=S.sortBySev?'<span class="sort-badge">↑ severity</span>':'';
   let html=`<div class="results-meta"><span><span class="count-hi">${totalCount.toLocaleString()}</span> hasil ditemukan${totalCount>1000?'<span style="font-size:10px;margin-left:4px">(maks. 1000)</span>':''}</span><span>${sortLabel}Hal. ${S.page} / ${totalPages||1}</span></div>`;
+  const isCommitMode=data.mode==='commits';
   if(totalCount>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Temuan crypto (private key/mnemonic) otomatis dikirim ke Telegram</div>`;
   if(totalCount>0){
-    html+=`<div class="info-bar info-warn">ℹ 📝 Commit Search — GitHub membatasi 30 hasil per halaman. Diurutkan: severity → terbaru.</div>`;
+    const modeLabel=isCommitMode?'📝 Commit Search':'📄 Code Search';
+    html+=`<div class="info-bar info-warn">ℹ ${modeLabel} — GitHub membatasi 30 hasil per halaman. Diurutkan: severity → terbaru.</div>`;
   }
   if(!data.items||data.items.length===0) {
     html+=`<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil</div><div class="empty-sub">Coba query berbeda atau nonaktifkan filter Exclude forks / Recent (7d)</div></div>`;
@@ -1301,17 +1310,15 @@ function renderContent(data,error,loading) {
     const SEV_ORD={CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3};
     const items=[...data.items];
     if(S.sortBySev) items.sort((a,b)=>{
-      const sa=a.severity||'LOW';
-      const sb=b.severity||'LOW';
-      const sevDiff=(SEV_ORD[sa]??3)-(SEV_ORD[sb]??3);
-      if(sevDiff!==0) return sevDiff;
-      const da=new Date(a.commit?.committer?.date||0).getTime();
-      const db=new Date(b.commit?.committer?.date||0).getTime();
+      const sa=a.severity||'LOW'; const sb=b.severity||'LOW';
+      const sevDiff=(SEV_ORD[sa]??3)-(SEV_ORD[sb]??3); if(sevDiff!==0) return sevDiff;
+      const da=isCommitMode?new Date(a.commit?.committer?.date||0).getTime():new Date(a.repository?.pushed_at||0).getTime();
+      const db=isCommitMode?new Date(b.commit?.committer?.date||0).getTime():new Date(b.repository?.pushed_at||0).getTime();
       return db-da;
     });
     if(!S.sortBySev) items.sort((a,b)=>{
-      const da=new Date(a.commit?.committer?.date||0).getTime();
-      const db=new Date(b.commit?.committer?.date||0).getTime();
+      const da=isCommitMode?new Date(a.commit?.committer?.date||0).getTime():new Date(a.repository?.pushed_at||0).getTime();
+      const db=isCommitMode?new Date(b.commit?.committer?.date||0).getTime():new Date(b.repository?.pushed_at||0).getTime();
       return db-da;
     });
     const ignored=S.ignoredUrls;
@@ -1327,9 +1334,11 @@ function renderContent(data,error,loading) {
       const repo=item.repository||{};
       const rn=repo.full_name||'';
       if(noForkFilter&&repo.fork) return false;
+      if(!isCommitMode&&activeFilter){const ds=repo.pushed_at||repo.updated_at;if(ds&&new Date(ds).getTime()<cutoff7)return false;}
       if(onePerRepo&&rn&&seenRepos.has(rn)) return false;
       seenRepos.add(rn);
-      if(cryptoOnly){const sev=item.severity||'LOW';if(sev!=='CRITICAL'&&sev!=='HIGH') return false;}
+      if(cryptoOnly&&!isCommitMode&&!item.valuePreview) return false;
+      if(cryptoOnly&&isCommitMode){const sev=item.severity||'LOW';if(sev!=='CRITICAL'&&sev!=='HIGH') return false;}
       return true;
     });
     deduped.forEach(item=>{
@@ -1341,41 +1350,49 @@ function renderContent(data,error,loading) {
       const archBadge=repo.archived?'<span class="repo-badge badge-arch">archived</span>':'';
       const batchLbl=item._batchLabel?`<span class="batch-lbl">${esc(item._batchLabel)}</span>`:'';
 
-      const c=item.commit||{};
-      const msg=c.message||'';
-      const msgLines=msg.split('\n');
-      const msgFirst=esc(msgLines[0].slice(0,120));
-      const msgFull=esc(msg.slice(0,600));
-      const hasMore=msg.length>msgLines[0].length;
-      const commitDate=c.committer?.date||c.author?.date||'';
-      const author=item.author?.login?`<a href="${esc(item.author.html_url||'#')}" target="_blank" rel="noopener" class="commit-author">@${esc(item.author.login)}</a>`:`<span class="commit-author">${esc(c.author?.name||'unknown')}</span>`;
-      const sha=item.sha?item.sha.slice(0,7):'';
-      const stars=(repo.stargazers_count??0).toLocaleString();
-      html+=`<div class="result-card commit-card" data-url="${fileUrl}">
-        <div class="result-top">
-          <div class="result-links">
-            <div>
-              <a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}${batchLbl}
-              <span class="commit-sha"><a href="${fileUrl}" target="_blank" rel="noopener">${sha} ↗</a></span>
+      if(isCommitMode){
+        const c=item.commit||{};
+        const msg=c.message||'';
+        const msgLines=msg.split('\n');
+        const msgFirst=esc(msgLines[0].slice(0,120));
+        const msgFull=esc(msg.slice(0,600));
+        const hasMore=msg.length>msgLines[0].length;
+        const commitDate=c.committer?.date||c.author?.date||'';
+        const author=item.author?.login?`<a href="${esc(item.author.html_url||'#')}" target="_blank" rel="noopener" class="commit-author">@${esc(item.author.login)}</a>`:`<span class="commit-author">${esc(c.author?.name||'unknown')}</span>`;
+        const sha=item.sha?item.sha.slice(0,7):'';
+        const stars=(repo.stargazers_count??0).toLocaleString();
+        html+=`<div class="result-card commit-card" data-url="${fileUrl}">
+          <div class="result-top">
+            <div class="result-links">
+              <div>
+                <a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}${batchLbl}
+                <span class="commit-sha"><a href="${fileUrl}" target="_blank" rel="noopener">${sha} ↗</a></span>
+              </div>
+              <div class="result-meta-row">${author}<span class="meta-sep">·</span>${freshBadge(commitDate)}<span class="meta-item">⭐ ${stars}</span></div>
             </div>
-            <div class="result-meta-row">
-              ${author}
-              <span class="meta-sep">·</span>
-              ${freshBadge(commitDate)}
-              <span class="meta-item">⭐ ${stars}</span>
+            <div class="result-actions">
+              <span class="sev sev-${esc(sev)}">${esc(sev)}</span>
+              <button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan">✕</button>
+              <button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button>
             </div>
           </div>
-          <div class="result-actions">
-            <span class="sev sev-${esc(sev)}">${esc(sev)}</span>
-            <button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan">✕</button>
-            <button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button>
+          <div class="commit-msg-box">
+            <span class="commit-msg-icon">💬</span>
+            <span class="commit-msg-text" data-full="${msgFull}">${msgFirst}${hasMore?'<span class="commit-msg-more" onclick="var t=this.parentElement;t.textContent=t.dataset.full;"> …lihat selengkapnya</span>':''}</span>
           </div>
-        </div>
-        <div class="commit-msg-box">
-          <span class="commit-msg-icon">💬</span>
-          <span class="commit-msg-text" data-full="${msgFull}">${msgFirst}${hasMore?'<span class="commit-msg-more" onclick="var t=this.parentElement;t.textContent=t.dataset.full;"> …lihat selengkapnya</span>':''}</span>
-        </div>
-      </div>`;
+        </div>`;
+      } else {
+        const tm=item.text_matches&&item.text_matches[0];
+        const fragment=tm?.fragment||item.snippet||'';
+        const matches=tm?.matches||[];
+        const stars=(repo.stargazers_count??0).toLocaleString();
+        const pushedDate=repo.pushed_at||repo.updated_at||'';
+        const explorerHtml=sev==='CRITICAL'?detectExplorerLinks(item.path||'',fragment):'';
+        const vp=item.valuePreview||'';
+        const vpHtml=vp?`<div class="val-preview-wrap"><span class="val-preview" onclick="copyText(${JSON.stringify(vp)});event.stopPropagation()" title="Klik untuk salin"><span class="val-preview-label">🔑 Value:&nbsp;</span>${esc(vp)}<span class="val-preview-copy">⎘ salin</span></span></div>`:'';
+        const confHtml=confidenceBadge(item.confidence,item.aiValidated,item.aiType);
+        html+=`<div class="result-card" data-url="${fileUrl}"><div class="result-top"><div class="result-links"><div><a href="${esc(repo.html_url||'#')}" target="_blank" rel="noopener" class="result-repo">${esc(repo.full_name||'unknown')}</a>${forkBadge}${archBadge}<span class="sep">/</span><a href="${fileUrl}" target="_blank" rel="noopener" class="result-file">${esc(item.path||'')} ↗</a>${batchLbl}</div><div class="result-meta-row"><span class="meta-item">⭐ ${stars}</span>${freshBadge(pushedDate)}</div></div><div class="result-actions"><span class="sev sev-${esc(sev)}">${esc(sev)}</span><button class="preview-btn" data-preview="${fileUrl}" data-label="${esc(item.path||'')}" title="Preview file">👁</button><button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan hasil ini">✕</button><button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button></div></div>${vpHtml}${confHtml}${highlightSnippet(fragment,matches)}${explorerHtml}</div>`;
+      }
     });
     if(totalPages>1) html+=`<div class="pagination"><button class="btn btn-outline" onclick="changePage(-1)" ${S.page<=1?'disabled':''}>← Prev</button><span class="page-info">Hal. ${S.page} / ${totalPages}</span><button class="btn btn-outline" onclick="changePage(1)" ${S.page>=totalPages?'disabled':''}>Next →</button></div>`;
   }
@@ -1593,9 +1610,14 @@ async function runBatch(){
   for(const {q,label} of queries){
     try{
       let qFull=q;
-      if(activeFilter){const since=new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10);if(!qFull.includes('committer-date:'))qFull+=` committer-date:>${since}`;}
-      if(noFork) qFull+=' fork:false';
-      const r=await fetch(`/api/github/search?q=${encodeURIComponent(qFull)}&per_page=30&page=1&mode=commits`);
+      const qMode=isCodeQuery(qFull)?'code':'commits';
+      if(qMode==='commits'){
+        if(activeFilter){const since=new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10);if(!qFull.includes('committer-date:'))qFull+=` committer-date:>${since}`;}
+        if(noFork) qFull+=' fork:false';
+      } else {
+        if(!noFork) qFull+=' fork:true';
+      }
+      const r=await fetch(`/api/github/search?q=${encodeURIComponent(qFull)}&per_page=30&page=1&mode=${qMode}`);
       const data=await r.json();
       if(r.ok&&data.items){data.items.forEach(item=>{item._batchLabel=label;});allItems.push(...data.items);totalCount+=data.total_count||0;}
     }catch{}
