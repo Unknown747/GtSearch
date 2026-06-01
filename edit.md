@@ -18,6 +18,12 @@
 - **Root cause:** Script post-merge mencoba menjalankan `pnpm --filter db push` tapi tidak ada workspace package bernama `db`. Menyebabkan error pada setiap merge.
 - **Fix:** Hapus baris `pnpm --filter db push` — project menggunakan file-based persistence, tidak ada database migration.
 
+### #47 Bug Fix: Filter "Recent 30d" menyaring semua hasil (tidak ada hasil ditampilkan)
+- **File:** `artifacts/api-server/public/index.html` (fungsi `renderContent`, filter `deduped`)
+- **Root cause:** GitHub Code Search API (`/search/code`) **tidak mengembalikan** field `pushed_at` / `updated_at` / `created_at` di dalam objek repository. Filter client-side menggunakan fallback `new Date(undefined || 0)` → tahun 1970, yang selalu lebih kecil dari cutoff 30 hari → semua item difilter keluar → tidak ada hasil ditampilkan, padahal `total_count > 0`.
+- **Fix:** Hanya terapkan filter tanggal jika field date-nya benar-benar ada (non-empty string). Jika `pushed_at`/`updated_at`/`created_at` tidak ada, item diloloskan (dianggap mungkin baru).
+- Filter "Exclude forks" tetap bekerja karena field `fork` memang dikembalikan oleh API.
+
 ### Hasil audit
 - TypeScript typecheck: 0 error ✅
 - Build esbuild: sukses ✅

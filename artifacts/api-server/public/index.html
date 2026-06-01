@@ -1431,9 +1431,10 @@ function renderContent(data,error,loading) {
       // Client-side: exclude forks
       if(noForkFilter&&repo.fork) return false;
       // Client-side: only repos pushed within last 30d
-      if(activeFilter){const pt=new Date(repo.pushed_at||repo.updated_at||0).getTime(); if(pt<cutoff30) return false;}
+      // NOTE: GitHub code search API often omits pushed_at/updated_at — skip filter when date is missing
+      if(activeFilter){const ds=repo.pushed_at||repo.updated_at; if(ds){const pt=new Date(ds).getTime(); if(pt<cutoff30) return false;}}
       // Client-side: only repos created after selected year
-      if(ageVal){const ct=new Date(repo.created_at||0).getTime(); if(ct<cutoffYear) return false;}
+      if(ageVal){const ds=repo.created_at; if(ds){const ct=new Date(ds).getTime(); if(ct<cutoffYear) return false;}}
       if(onePerRepo&&rn&&seenRepos.has(rn)) return false;
       seenRepos.add(rn);
       return true;
