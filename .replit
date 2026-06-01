@@ -18,10 +18,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Start application"
+args = "GH Dork Web"
 
 [[workflows.workflow]]
-name = "Start application"
+name = "GH Dork Web"
 author = "agent"
 
 [[workflows.workflow.tasks]]
@@ -44,10 +44,6 @@ timeoutMs = 20000
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 21116
-externalPort = 3000
 
 [nix]
 channel = "stable-25_05"
