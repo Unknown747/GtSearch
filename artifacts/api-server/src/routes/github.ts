@@ -1564,7 +1564,7 @@ router.get("/github/search", async (req, res) => {
           fileUrl: i.html_url,
           snippet: i.snippet,
         }));
-      if (hits.length > 0) void sendTelegram(finalQuery, hits);
+      if (hits.length > 0) void sendTelegram(q, hits);
     }
 
     res.json({ ...data, items: enriched });

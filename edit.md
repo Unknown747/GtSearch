@@ -1,5 +1,30 @@
 # Edit History — GH Dork
 
+## 2026-06-01 — Session 10: Migrasi Replit + Audit Bug
+
+### #44 Migrasi ke Replit Environment
+- Install semua dependensi dengan `pnpm install` (Node.js 24 + semua package workspace)
+- Upgrade module dari `nodejs-20` → `nodejs-24` (sesuai requirement project)
+- Konfirmasi workflow "GH Dork Web" berjalan di port 8080 ✅
+- `GEMINI_API_KEY` dikonfigurasi via Replit Secrets
+
+### #45 Bug Fix: `finalQuery` tidak terdefinisi di `/api/github/search`
+- **File:** `artifacts/api-server/src/routes/github.ts` (baris 1567)
+- **Root cause:** Variabel `finalQuery` dipakai di `sendTelegram(finalQuery, hits)` tapi tidak pernah dideklarasikan — hanya ada `q` (dari `req.query["q"]`). Ini menyebabkan `ReferenceError` setiap kali notifikasi Telegram dikirim setelah manual search.
+- **Fix:** Ganti `finalQuery` → `q`
+
+### #46 Bug Fix: `post-merge.sh` memanggil `pnpm --filter db push` yang tidak ada
+- **File:** `scripts/post-merge.sh`
+- **Root cause:** Script post-merge mencoba menjalankan `pnpm --filter db push` tapi tidak ada workspace package bernama `db`. Menyebabkan error pada setiap merge.
+- **Fix:** Hapus baris `pnpm --filter db push` — project menggunakan file-based persistence, tidak ada database migration.
+
+### Hasil audit
+- TypeScript typecheck: 0 error ✅
+- Build esbuild: sukses ✅
+- Semua Session 7 fixes (#32) dikonfirmasi aktif: confidence scale, CSS class, dead variable, `.catch()` guard, playBeep() guard, null pointer guard ✅
+
+---
+
 ## 2026-05-31 — Session 9: Bug Fix — Auto-Scan 422 & Rate-Limit Handling
 
 ### #41 Fix: Hapus `fork:false pushed:>` dari code search URL
