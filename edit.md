@@ -1,5 +1,17 @@
 # Edit History — GH Dork
 
+## 2026-06-01 — Session 17: Fix Code Search Tidak Pernah Jalan
+
+### #58 Bug Fix KRITIS: Code Search Block Tidak Pernah Tercapai
+- **File:** `artifacts/api-server/src/routes/github.ts`
+- **Root cause:** Commit search block ditulis sebagai bare block `{ ... return; }` tanpa kondisi `if (mode === "commits")`. Akibatnya, meski `mode` sudah terdeteksi `"code"` (karena query punya `filename:`, `extension:`, dll), commit search **selalu** dijalankan dan `return` sebelum code search block tercapai — code search block jadi **dead code** total.
+- **Fix:** Ganti bare `{` → `if (mode === "commits") {` pada baris pembuka commit search block.
+- **Dampak:** Semua query dengan qualifier `filename:`, `extension:`, `path:`, `language:` (termasuk seluruh DORKS library: ETH PRIVATE_KEY .env, MNEMONIC .env, hardhat.config, keypair.json, dll) sekarang benar-benar dikirim ke `/search/code` API dengan header `text-match+json` → snippet/fragment dikembalikan → `extractValuePreview` bisa menemukan nilai aktual → Gemini AI validation jalan → hasil relevan.
+
+Build sukses ✅, server restart ✅
+
+---
+
 ## 2026-06-01 — Session 16: Restore Code Search (Auto-Detect Mode)
 
 ### #57 Auto-Detect Code Search vs Commit Search

@@ -1517,7 +1517,7 @@ router.get("/github/search", async (req, res) => {
   const { token } = picked;
 
   // ── COMMIT SEARCH ────────────────────────────────────────────────────────
-  {
+  if (mode === "commits") {
     const url = `https://api.github.com/search/commits?q=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&sort=committer-date&order=desc`;
     const headers: Record<string, string> = {
       Authorization: `token ${token}`,
