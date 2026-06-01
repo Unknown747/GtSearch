@@ -418,6 +418,74 @@ function filterRecentRepos<T extends { repository: { pushed_at?: string; updated
   });
 }
 
+// ── Repo metadata enrichment cache ───────────────────────────────────────────
+// GitHub code search API omits pushed_at, stargazers_count, fork, archived from
+// the repository object. We fetch these via /repos/{owner}/{repo} and cache 1h.
+interface RepoMeta {
+  pushed_at: string;
+  updated_at: string;
+  stargazers_count: number;
+  fork: boolean;
+  archived: boolean;
+  expires: number;
+}
+const repoMetaCache = new Map<string, RepoMeta>();
+const REPO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+async function enrichRepoMeta(
+  fullNames: string[],
+  token: string,
+): Promise<Map<string, RepoMeta>> {
+  const result = new Map<string, RepoMeta>();
+  const toFetch: string[] = [];
+  const now = Date.now();
+
+  for (const fn of fullNames) {
+    const cached = repoMetaCache.get(fn);
+    if (cached && cached.expires > now) {
+      result.set(fn, cached);
+    } else {
+      toFetch.push(fn);
+    }
+  }
+
+  if (toFetch.length === 0) return result;
+
+  const headers = {
+    Authorization: `token ${token}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "GH-Dork/2.0",
+  };
+
+  await Promise.all(
+    toFetch.map(async (fn) => {
+      try {
+        const r = await fetch(`https://api.github.com/repos/${fn}`, { headers });
+        if (!r.ok) return;
+        const d = (await r.json()) as {
+          pushed_at?: string; updated_at?: string;
+          stargazers_count?: number; fork?: boolean; archived?: boolean;
+        };
+        const meta: RepoMeta = {
+          pushed_at: d.pushed_at ?? "",
+          updated_at: d.updated_at ?? "",
+          stargazers_count: d.stargazers_count ?? 0,
+          fork: d.fork ?? false,
+          archived: d.archived ?? false,
+          expires: now + REPO_CACHE_TTL_MS,
+        };
+        repoMetaCache.set(fn, meta);
+        result.set(fn, meta);
+      } catch {
+        // non-fatal: item keeps whatever partial data the search API returned
+      }
+    }),
+  );
+
+  return result;
+}
+
 const DUMMY_KEY_PATTERNS: RegExp[] = [
   /^0{32,}$/,
   /^f{32,}$/i,
@@ -1542,19 +1610,29 @@ router.get("/github/search", async (req, res) => {
     }
 
     const data = (await r.json()) as GitHubSearchResponse;
+
+    // Enrich repo metadata: GitHub code search API omits pushed_at, stargazers_count,
+    // fork, archived. Fetch them in parallel (cached 1h) so client filters actually work.
+    const uniqueRepos = [...new Set(data.items.map((i) => i.repository.full_name))];
+    const repoMeta = await enrichRepoMeta(uniqueRepos, token);
+
     const enriched = data.items.map((item) => {
+      const meta = repoMeta.get(item.repository.full_name);
+      const repository = meta
+        ? { ...item.repository, pushed_at: meta.pushed_at, updated_at: meta.updated_at, stargazers_count: meta.stargazers_count, fork: meta.fork, archived: meta.archived }
+        : item.repository;
       const snippet = item.text_matches?.[0]?.fragment ?? "";
       const sev = severity(item.path, snippet);
-      return { ...item, severity: sev, snippet, valuePreview: extractValuePreview(snippet, item.path), confidence: confidenceScore(item.path, snippet, sev) };
+      return { ...item, repository, severity: sev, snippet, valuePreview: extractValuePreview(snippet, item.path), confidence: confidenceScore(item.path, snippet, sev) };
     });
 
     if (notify) {
-      // Only notify for repos that were pushed in the last 30 days — skip old stale findings
-      const freshCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      // Only notify for repos pushed within the last 7 days — skip old stale findings
+      const freshCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const hits: Finding[] = enriched
         .filter((i) => {
           if (i.severity !== "CRITICAL" && i.severity !== "HIGH") return false;
-          const repoDate = new Date(i.repository.updated_at ?? 0).getTime();
+          const repoDate = new Date(i.repository.pushed_at ?? i.repository.updated_at ?? 0).getTime();
           return repoDate >= freshCutoff;
         })
         .map((i) => ({
