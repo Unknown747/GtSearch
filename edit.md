@@ -1,5 +1,22 @@
 # Edit History — GH Dork
 
+## 2026-06-01 — Session 18: Audit & Fix WebView/Preview Tidak Bekerja
+
+### #59 Fix WebView Preview di Replit
+- **File:** `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/index.ts`
+- **Root cause 1 — Server binding:** `app.listen(port, callback)` tanpa host → tidak eksplisit bind ke `0.0.0.0`. Replit proxy butuh server terbuka di semua interface.
+- **Root cause 2 — Browser cache:** `express.static` dan Express router mengirim ETag + `Last-Modified` header → browser menyimpan response lama dan kirim `If-None-Match` → server balas **304 Not Modified** → browser pakai file lama → preview tidak update.
+- **Root cause 3 — Iframe blocking:** Tidak ada `X-Frame-Options` (sudah aman), tapi tidak ada explicit `removeHeader` guard.
+- **Fix 1 (`index.ts`):** `app.listen(port, callback)` → `app.listen(port, "0.0.0.0", callback)` — eksplisit bind semua interface.
+- **Fix 2 (`app.ts`):** `app.set("etag", false)` — matikan ETag global, tidak ada lagi 304.
+- **Fix 3 (`app.ts`):** Tambah middleware `Cache-Control: no-store, no-cache`, `Pragma: no-cache`, `Expires: 0`, `removeHeader("X-Frame-Options")` untuk semua response.
+- **Fix 4 (`app.ts`):** `express.static(..., { etag: false, lastModified: false })` — matikan etag dan lastModified untuk file statis.
+- **Hasil:** Semua response 200 (tidak ada lagi 304), preview Replit load fresh setiap kali.
+
+Build sukses ✅, server restart ✅, semua response 200 ✅
+
+---
+
 ## 2026-06-01 — Session 17: Fix Code Search Tidak Pernah Jalan
 
 ### #58 Bug Fix KRITIS: Code Search Block Tidak Pernah Tercapai
