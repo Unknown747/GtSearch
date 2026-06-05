@@ -1,4 +1,0 @@
-- [Data persistence path](data-persistence.md) — findings/custom-queries saved to `artifacts/api-server/data/` (not dist/ — survives rebuilds)
-- [Seenfindings dedup](seenfindings-dedup.md) — uses `url|md5(snippet[:200])` key, not just URL; enables re-detection when file content changes
-- [Auto-scan page 2 guard](page2-guard.md) — only fetches page 2 when page1.length >= 30 AND token remaining > 5
-- [Express 5 catch-all](express5-catchall.md) — must use `/{*path}` not `*` for catch-all routes
