@@ -87,9 +87,10 @@ export async function validateWithAI(
       if (!res.ok) {
         const body = await res.text().catch(() => "");
         logger.warn({ status: res.status, attempt, body: body.slice(0, 200) }, "Gemini API non-OK");
-        if (res.status === 429 && attempt < 3) {
-          await new Promise((r) => setTimeout(r, attempt * 2000));
-          continue;
+        if (res.status === 429) {
+          // Free-tier rate limit — do NOT retry, return a graceful skip so callers
+          // don't pile up and worsen the quota situation.
+          return { is_valid: false, type: credType ?? "unknown", confidence: 0, reason: "Gemini rate-limited (429) — skipped" };
         }
         throw new Error(`Gemini API error: ${res.status}`);
       }

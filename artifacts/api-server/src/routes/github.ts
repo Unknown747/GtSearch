@@ -1449,6 +1449,8 @@ router.get("/github/config", (_req, res) => {
     telegramConfigured: !!(process.env["TELEGRAM_BOT_TOKEN"] && process.env["TELEGRAM_CHAT_ID"]),
     discordConfigured: !!process.env["DISCORD_WEBHOOK_URL"],
     slackConfigured: !!process.env["SLACK_WEBHOOK_URL"],
+    geminiConfigured: !!process.env["GEMINI_API_KEY"],
+    geminiModel: process.env["GEMINI_API_KEY"] ? "gemini-2.0-flash" : null,
   });
 });
 
@@ -1604,20 +1606,34 @@ router.get("/github/search", async (req, res) => {
       }>;
     }
     const data = (await r.json()) as GHCodeSearchResponse;
-    const enriched = await Promise.all(data.items.map(async (item) => {
+    // ── Phase 1: fast local enrichment (no AI, parallel) ────────────────────
+    const phase1 = data.items.map((item) => {
       const snippet = item.text_matches?.[0]?.fragment ?? "";
       const sev = severity(item.path, snippet);
       const vp = extractValuePreview(snippet, item.path);
       const baseConf = confidenceScore(item.path, snippet, sev);
-      let aiValidated = false; let aiType: string | undefined; let finalConf = baseConf;
-      if (vp) {
-        try {
-          const aiRes = await validateWithAI(vp, vp.split(":")[0].trim());
-          if (aiRes.confidence > 0) { aiValidated = true; aiType = aiRes.type; finalConf = Math.round((baseConf + aiRes.confidence) / 2); }
-        } catch { /* non-fatal */ }
-      }
-      return { ...item, severity: sev, snippet, valuePreview: vp, confidence: finalConf, aiValidated, aiType, mode: "code" };
-    }));
+      return { ...item, severity: sev, snippet, valuePreview: vp, confidence: baseConf, aiValidated: false, aiType: undefined as string | undefined, mode: "code" };
+    });
+
+    // ── Phase 2: sequential Gemini validation for CRITICAL/HIGH items ────────
+    // Sequential (not parallel) to avoid blasting the free-tier quota.
+    // Send the raw snippet — not the censored valuePreview — for best accuracy.
+    const enriched = phase1;
+    for (const item of enriched) {
+      const { snippet, valuePreview: vp, severity: sev, confidence: baseConf } = item;
+      const needsAI = (sev === "CRITICAL" || sev === "HIGH") && snippet.length > 15;
+      if (!needsAI) continue;
+      try {
+        const aiSnippet = snippet; // always use the full raw snippet for accuracy
+        const credHint  = vp ? vp.split(":")[0].trim() : (item.path.split("/").pop() ?? "unknown");
+        const aiRes = await validateWithAI(aiSnippet, credHint);
+        if (aiRes.confidence > 0) {
+          item.aiValidated = true;
+          item.aiType = aiRes.type;
+          item.confidence = Math.round((baseConf + aiRes.confidence) / 2);
+        }
+      } catch { /* non-fatal */ }
+    }
     if (notify) {
       const hits: Finding[] = enriched
         .filter(i => !!i.valuePreview || i.severity === "CRITICAL" || i.severity === "HIGH")

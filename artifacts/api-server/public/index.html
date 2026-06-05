@@ -516,6 +516,10 @@
           <button class="tg-btn" id="btn-tg-test" onclick="testTelegram()" title="Test Telegram" style="display:none">📤</button>
         </div>
         <div class="status-row">
+          <div class="dot dot-warn" id="dot-gemini"></div>
+          <span class="status-text" id="txt-gemini">Gemini AI —</span>
+        </div>
+        <div class="status-row">
           <div class="dot dot-warn" id="dot-discord"></div>
           <span class="status-text" id="txt-discord">Discord —</span>
         </div>
@@ -1206,6 +1210,9 @@ function updateStatus() {
   $('dot-tg').className='dot '+(tgOk?'dot-ok':'dot-warn');
   $('txt-tg').textContent=tgOk?'Telegram aktif':'Telegram —';
   $('btn-tg-test').style.display=tgOk?'inline-block':'none';
+  const gemOk=!!cfg.geminiConfigured;
+  $('dot-gemini').className='dot '+(gemOk?'dot-ok':'dot-warn');
+  $('txt-gemini').textContent=gemOk?`Gemini AI aktif (${cfg.geminiModel||'flash'})`:'Gemini AI — (GEMINI_API_KEY belum diset)';
   $('dot-discord').className='dot '+(discOk?'dot-ok':'dot-warn');
   $('txt-discord').textContent=discOk?'Discord aktif':'Discord —';
   $('dot-slack').className='dot '+(slackOk?'dot-ok':'dot-warn');
