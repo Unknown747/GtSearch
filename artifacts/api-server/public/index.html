@@ -378,10 +378,17 @@
     .strict-toggle.on{background:rgba(239,68,68,.22);border-color:rgba(239,68,68,.5);font-weight:600;}
     .strict-desc{font-size:10px;color:var(--muted);}
     .batch-lbl{font-size:9px;color:var(--primary);background:rgba(99,102,241,.12);border-radius:3px;padding:1px 5px;margin-left:5px;font-weight:600;}
+    /* ── Mode Toggle ── */
+    .mode-toggle-row{display:flex;align-items:center;gap:6px;margin:7px 0 4px;}
+    .mode-btn{background:var(--input);border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:4px 12px;font-size:11px;cursor:pointer;transition:all .15s;white-space:nowrap;}
+    .mode-btn.mode-active{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.5);color:var(--primary);font-weight:600;}
+    .mode-hint{font-size:10px;color:var(--muted);flex:1;min-width:0;}
     /* ── Commit card ── */
     .commit-card{border-left:2px solid rgba(99,102,241,.4);}
     .commit-sha{font-size:9px;font-family:monospace;color:var(--muted);margin-left:6px;}
     .commit-sha a{color:var(--muted);text-decoration:none;} .commit-sha a:hover{color:var(--primary);}
+    .commit-files-btn{font-size:10px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:4px;padding:2px 7px;cursor:pointer;text-decoration:none;transition:all .15s;white-space:nowrap;}
+    .commit-files-btn:hover{border-color:var(--primary);color:var(--primary);}
     .commit-author{font-size:10px;color:var(--text-sub);text-decoration:none;} .commit-author:hover{color:var(--primary);}
     .meta-sep{color:var(--border);font-size:10px;margin:0 2px;}
     .commit-msg-box{margin-top:7px;background:rgba(0,0,0,.25);border-radius:4px;padding:7px 10px;display:flex;gap:7px;align-items:flex-start;}
@@ -573,6 +580,11 @@
         <button class="btn btn-primary" id="btn-search" onclick="doSearch()">🔍 Search</button>
       </div>
       <input class="input" id="scope-input" type="text" placeholder="Scope: username atau org GitHub (opsional)" autocomplete="off">
+      <div class="mode-toggle-row">
+        <button id="btn-mode-commits" class="mode-btn mode-active" onclick="setSearchMode('commits')">📝 Commit</button>
+        <button id="btn-mode-code"    class="mode-btn"             onclick="setSearchMode('code')">📄 Code (Isi File)</button>
+        <span id="mode-hint-text" class="mode-hint">Cari di pesan commit — akurasi rendah, key mungkin sudah dihapus</span>
+      </div>
       <div class="filter-row">
         <label class="filter-chk" title="Exclude hasil dari repo fork — mengurangi duplikat secara signifikan"><input type="checkbox" id="f-no-fork" checked> <span>Exclude forks</span></label>
         <label class="filter-chk" title="Hanya commit/repo dalam 7 hari terakhir — hasil fresh saja"><input type="checkbox" id="f-active" checked> <span>Recent (7d)</span></label>
@@ -887,6 +899,54 @@ const DORKS = [
     { label:'commit: Polkadot seed',       q:'"polkadot" "seed" OR "DOT_MNEMONIC" OR "substrate seed"' },
     { label:'commit: Tron key',            q:'"tron" "private key" OR "TRON_PRIVATE_KEY" OR "TRX_PRIVATE_KEY"' },
     { label:'commit: BTC key',             q:'"bitcoin" "private key" OR "BTC_PRIVATE_KEY" OR "wif key"' },
+  ]},
+
+  // ── CODE SEARCH (searches actual file content) ──────────────────────────────
+  { cat:'📄 Code: .env / Config Files', icon:'🟢', color:'#4ade80', mode:'code', queries:[
+    { label:'code: PRIVATE_KEY in .env',   q:'filename:.env PRIVATE_KEY',    mode:'code' },
+    { label:'code: MNEMONIC in .env',      q:'filename:.env MNEMONIC',       mode:'code' },
+    { label:'code: SECRET in .env',        q:'filename:.env SECRET_KEY',     mode:'code' },
+    { label:'code: API_KEY + SECRET .env', q:'filename:.env API_KEY API_SECRET', mode:'code' },
+    { label:'code: .env.local key',        q:'filename:.env.local PRIVATE_KEY OR MNEMONIC', mode:'code' },
+    { label:'code: .env.example leaked',   q:'filename:.env.example PRIVATE_KEY OR MNEMONIC', mode:'code' },
+    { label:'code: config.js privateKey',  q:'filename:config.js privateKey OR mnemonic', mode:'code' },
+    { label:'code: settings.py SECRET',    q:'filename:settings.py SECRET_KEY OR PRIVATE_KEY', mode:'code' },
+  ]},
+  { cat:'📄 Code: Wallet & Keypair Files', icon:'🟢', color:'#34d399', mode:'code', queries:[
+    { label:'code: keypair.json (Solana)', q:'filename:keypair.json',         mode:'code' },
+    { label:'code: wallet.json secret',   q:'filename:wallet.json secretKey', mode:'code' },
+    { label:'code: id_rsa private key',   q:'filename:id_rsa BEGIN RSA',      mode:'code' },
+    { label:'code: .pem private key',     q:'extension:pem PRIVATE KEY',      mode:'code' },
+    { label:'code: .key file',            q:'extension:key PRIVATE KEY',      mode:'code' },
+    { label:'code: wallet.dat',           q:'filename:wallet.dat',            mode:'code' },
+    { label:'code: mnemonic.txt',         q:'filename:mnemonic.txt',          mode:'code' },
+    { label:'code: seed.txt',             q:'filename:seed.txt mnemonic OR private', mode:'code' },
+  ]},
+  { cat:'📄 Code: EVM / Hardhat / Foundry', icon:'🟢', color:'#60a5fa', mode:'code', queries:[
+    { label:'code: hardhat PRIVATE_KEY',   q:'filename:hardhat.config.js PRIVATE_KEY OR mnemonic', mode:'code' },
+    { label:'code: hardhat.config.ts key', q:'filename:hardhat.config.ts PRIVATE_KEY OR mnemonic', mode:'code' },
+    { label:'code: foundry.toml key',      q:'filename:foundry.toml private_key',                  mode:'code' },
+    { label:'code: truffle-config key',    q:'filename:truffle-config.js mnemonic OR private_key', mode:'code' },
+    { label:'code: .env ETH_PRIVATE_KEY',  q:'filename:.env ETH_PRIVATE_KEY OR DEPLOYER_KEY',      mode:'code' },
+    { label:'code: remix IDE key',         q:'filename:remix.config.js privateKey',                 mode:'code' },
+    { label:'code: viem privateKey',       q:'privateKeyToAccount "0x" extension:ts',               mode:'code' },
+    { label:'code: ethers.Wallet key',     q:'"new ethers.Wallet" "0x" extension:js OR extension:ts', mode:'code' },
+  ]},
+  { cat:'📄 Code: Exchange API (File Content)', icon:'🟢', color:'#f472b6', mode:'code', queries:[
+    { label:'code: BINANCE_API_KEY file',  q:'filename:.env BINANCE_API_KEY BINANCE_SECRET',  mode:'code' },
+    { label:'code: BYBIT_API_KEY file',    q:'filename:.env BYBIT_API_KEY BYBIT_SECRET',      mode:'code' },
+    { label:'code: OKX_API_KEY file',      q:'filename:.env OKX_API_KEY OKX_SECRET',          mode:'code' },
+    { label:'code: KUCOIN key file',       q:'filename:.env KUCOIN_API_KEY KUCOIN_SECRET',    mode:'code' },
+    { label:'code: exchange key in py',    q:'filename:config.py api_key OR API_KEY secret',  mode:'code' },
+    { label:'code: exchange key in yaml',  q:'extension:yaml api_key: secret_key:',           mode:'code' },
+    { label:'code: Binance key in code',   q:'"BINANCE_API_KEY" "BINANCE_SECRET_KEY" extension:py OR extension:js', mode:'code' },
+  ]},
+  { cat:'📄 Code: Solana / Anchor', icon:'🟢', color:'#a78bfa', mode:'code', queries:[
+    { label:'code: Keypair.fromSecretKey',    q:'"Keypair.fromSecretKey" extension:ts OR extension:js', mode:'code' },
+    { label:'code: bs58.decode secret',       q:'"bs58.decode" secretKey extension:ts',                  mode:'code' },
+    { label:'code: SOL_PRIVATE_KEY file',     q:'filename:.env SOL_PRIVATE_KEY OR SOLANA_PRIVATE_KEY',   mode:'code' },
+    { label:'code: anchor wallet key',        q:'filename:Anchor.toml wallet OR keypair',                 mode:'code' },
+    { label:'code: solana keygen output',     q:'"solana-keygen" "pubkey" extension:sh OR extension:md',  mode:'code' },
   ]},
 
 ];
@@ -1245,9 +1305,24 @@ function toggleCat(ci) {
   const chev=document.querySelector(`.cat-btn[data-ci="${ci}"] .chevron`);
   if(chev) chev.className='chevron'+(S.openCats.has(ci)?' open':'');
 }
+function setSearchMode(m) {
+  S.activeMode = m;
+  document.getElementById('btn-mode-commits').classList.toggle('mode-active', m==='commits');
+  document.getElementById('btn-mode-code').classList.toggle('mode-active', m==='code');
+  document.getElementById('mode-hint-text').textContent = m==='commits'
+    ? 'Cari di pesan commit — akurasi rendah, key mungkin sudah dihapus'
+    : 'Cari di isi file secara langsung — jauh lebih akurat untuk menemukan key yang bocor';
+  document.getElementById('q-input').placeholder = m==='commits'
+    ? '"add mnemonic" OR "private key" OR "add wallet"'
+    : 'filename:.env PRIVATE_KEY OR MNEMONIC';
+}
 function pickDork(ci,di) {
-  const q=DORKS[ci].queries[di].q;
-  document.getElementById('q-input').value=q;
+  const dork=DORKS[ci].queries[di];
+  document.getElementById('q-input').value=dork.q;
+  // If the dork has an explicit mode, switch the toggle before searching
+  const catMode=DORKS[ci].mode;
+  const dorkMode=dork.mode||catMode;
+  if(dorkMode) setSearchMode(dorkMode);
   doSearch();
 }
 function isCodeQuery(q){return /\b(filename:|extension:|path:|language:)/.test(q);}
@@ -1255,7 +1330,10 @@ function doSearch() {
   let q=document.getElementById('q-input').value.trim(); if(!q) return;
   const scope=document.getElementById('scope-input').value.trim();
   if(scope) q+=` user:${scope}`;
-  const mode=isCodeQuery(q)?'code':'commits';
+  // If query has code qualifiers, always force code mode; otherwise respect the toggle
+  const mode=isCodeQuery(q)?'code':(S.activeMode||'commits');
+  // Sync toggle UI if auto-forced to code
+  if(mode!==S.activeMode) setSearchMode(mode);
   if(mode==='commits'){
     if(document.getElementById('f-active').checked){
       const since=new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10);
@@ -1301,8 +1379,10 @@ function renderContent(data,error,loading) {
   const isCommitMode=data.mode==='commits';
   if(totalCount>0&&tgOk) html+=`<div class="info-bar info-tg">📤 Temuan crypto (private key/mnemonic) otomatis dikirim ke Telegram</div>`;
   if(totalCount>0){
-    const modeLabel=isCommitMode?'📝 Commit Search':'📄 Code Search';
-    html+=`<div class="info-bar info-warn">ℹ ${modeLabel} — GitHub membatasi 30 hasil per halaman. Diurutkan: severity → terbaru.</div>`;
+    const modeDesc=isCommitMode
+      ? '📝 <b>Commit Search</b> — mencari di <b>pesan commit</b>, bukan isi file. Klik <b>📋 Files</b> pada tiap hasil untuk melihat file yang berubah. Untuk cari isi file langsung, gunakan mode <b>📄 Code</b>.'
+      : '📄 <b>Code Search</b> — mencari di <b>isi file secara langsung</b>. Klik 👁 untuk preview file. GitHub batasi 30 hasil/halaman, diurutkan: severity → terbaru.';
+    html+=`<div class="info-bar info-warn" style="line-height:1.6">${modeDesc}</div>`;
   }
   if(!data.items||data.items.length===0) {
     html+=`<div class="card empty"><div class="empty-icon">🔍</div><div class="empty-title">Tidak ada hasil</div><div class="empty-sub">Coba query berbeda atau nonaktifkan filter Exclude forks / Recent (7d)</div></div>`;
@@ -1374,6 +1454,7 @@ function renderContent(data,error,loading) {
             </div>
             <div class="result-actions">
               <span class="sev sev-${esc(sev)}">${esc(sev)}</span>
+              <a href="${fileUrl}/files" target="_blank" rel="noopener" class="commit-files-btn" title="Lihat file yang berubah di commit ini">📋 Files</a>
               <button class="ignore-btn" data-ignore="${fileUrl}" title="Abaikan">✕</button>
               <button class="copy-btn" data-copy="${fileUrl}" title="Salin URL">⎘</button>
             </div>
