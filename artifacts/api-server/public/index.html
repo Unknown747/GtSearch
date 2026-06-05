@@ -1173,7 +1173,7 @@ function renderTokenHealth() {
   const now = Date.now();
   list.innerHTML = tokens.map(t => {
     const dead   = t.errors >= 3;
-    const pct    = dead ? 0 : Math.min(100, Math.round((t.remaining / 5000) * 100));
+    const pct    = dead ? 0 : Math.min(100, Math.round((t.remaining / 30) * 100));
     const fillClr = dead ? '#a855f7' : pct > 20 ? '#4ade80' : pct > 5 ? '#fbbf24' : '#f87171';
     const badgeCls = dead ? 'th-dead' : pct > 20 ? 'th-ok' : pct > 5 ? 'th-warn' : 'th-low';
     const badgeTxt = dead ? 'DEAD' : pct > 20 ? 'OK' : pct > 5 ? 'LOW' : 'CRIT';
@@ -1349,8 +1349,10 @@ function renderContent(data,error,loading) {
       const forkBadge=repo.fork?'<span class="repo-badge badge-fork">fork</span>':'';
       const archBadge=repo.archived?'<span class="repo-badge badge-arch">archived</span>':'';
       const batchLbl=item._batchLabel?`<span class="batch-lbl">${esc(item._batchLabel)}</span>`:'';
+      // In mixed-mode batch, each item carries its own mode; fall back to global isCommitMode
+      const itemIsCommit = isCommitMode || (data.mode==='mixed' && item.mode==='commits');
 
-      if(isCommitMode){
+      if(itemIsCommit){
         const c=item.commit||{};
         const msg=c.message||'';
         const msgLines=msg.split('\n');
@@ -1630,7 +1632,10 @@ async function runBatch(){
   document.getElementById('q-preview-text').textContent=S.activeQuery;
   document.getElementById('btn-copy-q').onclick=()=>copyText(S.activeQuery);
   saveHist(S.activeQuery,totalCount);
-  renderContent({items:allItems,total_count:totalCount,mode:'commits'},null,false);
+  // Determine dominant mode: if any code-search item exists, use 'mixed' so renderContent
+  // checks item.mode per-card instead of assuming all items are commits.
+  const hasMixed=allItems.some(i=>i.mode==='code');
+  renderContent({items:allItems,total_count:totalCount,mode:hasMixed?'mixed':'commits'},null,false);
 }
 
 /* ── Dork Builder ───────────────────────────────────────────────────────────── */

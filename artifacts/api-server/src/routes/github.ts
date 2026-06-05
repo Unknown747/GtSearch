@@ -725,7 +725,7 @@ async function sendTelegram(query: string, findings: Finding[]): Promise<void> {
     `   🔗 ${escHtml(f.fileUrl)}`
   ).join("\n\n");
 
-  const footer = findings.length > 5 ? `\n\n<i>...dan ${findings.length - 5} temuan lainnya</i>` : "";
+  const footer = findings.length > top.length ? `\n\n<i>...dan ${findings.length - top.length} temuan lainnya</i>` : "";
 
   try {
     const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -753,7 +753,7 @@ async function sendTelegram(query: string, findings: Finding[]): Promise<void> {
     ...top.map((f, i) =>
       `${i + 1}. ${f.severity === "CRITICAL" ? "🔴" : "🟠"} ${f.repo} / ${f.path}\n   ${f.fileUrl}`
     ),
-    findings.length > 5 ? `...dan ${findings.length - 5} temuan lainnya` : null,
+    findings.length > top.length ? `...dan ${findings.length - top.length} temuan lainnya` : null,
   ].filter(Boolean).join("\n");
   void sendDiscord(plainLines);
   void sendSlack(plainLines);
@@ -1389,7 +1389,7 @@ async function sendAutoScanTelegram(findings: AutoScanFinding[]): Promise<void> 
     `   🔗 ${escHtml(f.fileUrl)}`
   ).join("\n\n");
 
-  const footer = findings.length > 5 ? `\n\n<i>...dan ${findings.length - 5} temuan lainnya</i>` : "";
+  const footer = findings.length > top.length ? `\n\n<i>...dan ${findings.length - top.length} temuan lainnya</i>` : "";
 
   try {
     const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -1417,7 +1417,7 @@ async function sendAutoScanTelegram(findings: AutoScanFinding[]): Promise<void> 
     ...top.map((f, i) =>
       `${i + 1}. ${f.severity === "CRITICAL" ? "🔴" : "🟠"} ${f.repo} / ${f.path}\n   🏷 ${f.queryLabel}\n   ${f.fileUrl}`
     ),
-    findings.length > 5 ? `...dan ${findings.length - 5} temuan lainnya` : null,
+    findings.length > top.length ? `...dan ${findings.length - top.length} temuan lainnya` : null,
   ].filter(Boolean).join("\n");
   void sendDiscord(plainLines);
   void sendSlack(plainLines);
