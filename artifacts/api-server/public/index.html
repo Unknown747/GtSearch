@@ -670,6 +670,7 @@
           <option value="7">7 hari</option>
           <option value="14" selected>14 hari</option>
           <option value="30">30 hari</option>
+          <option value="90">90 hari</option>
         </select>
       </div>
     </div>
@@ -742,6 +743,12 @@
         <button class="btn btn-outline" style="font-size:10px;padding:3px 8px" onclick="exportFindings('csv')">⬇ CSV</button>
         <button class="btn btn-outline" style="font-size:10px;padding:3px 8px" onclick="exportFindings('json')">⬇ JSON</button>
       </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <button id="sevf-ALL"      class="btn btn-primary"  style="font-size:11px;padding:4px 10px" onclick="setSevFilter('ALL')">Semua</button>
+      <button id="sevf-CRITICAL" class="btn btn-outline"  style="font-size:11px;padding:4px 10px;border-color:#f87171;color:#f87171" onclick="setSevFilter('CRITICAL')">🔴 CRITICAL</button>
+      <button id="sevf-HIGH"     class="btn btn-outline"  style="font-size:11px;padding:4px 10px;border-color:#fb923c;color:#fb923c" onclick="setSevFilter('HIGH')">🟠 HIGH</button>
+      <button id="sevf-MEDIUM"   class="btn btn-outline"  style="font-size:11px;padding:4px 10px" onclick="setSevFilter('MEDIUM')">🟡 MEDIUM</button>
     </div>
     <div id="as-findings-list"></div>
   </div>
@@ -1507,7 +1514,7 @@ function renderAutoScan() {
   const iSel=document.getElementById('interval-select');
   if(iSel&&as.intervalMs){const m=Math.round(as.intervalMs/60000);if([15,30,60,120,360].includes(m))iSel.value=String(m);}
   const wSel=document.getElementById('window-select');
-  if(wSel&&as.windowDays&&[7,14,30].includes(as.windowDays))wSel.value=String(as.windowDays);
+  if(wSel&&as.windowDays&&[7,14,30,90].includes(as.windowDays))wSel.value=String(as.windowDays);
   // Custom queries count badge
   const cqCnt=document.getElementById('custom-q-cnt');
   if(cqCnt) cqCnt.textContent=as.customQueriesCount?String(as.customQueriesCount):'';
@@ -1559,15 +1566,19 @@ function renderAutoScan() {
   document.getElementById('as-queries-list').innerHTML=(as.queries||[]).map(q=>`<span class="q-pill">${esc(q)}</span>`).join('');
 
   // Findings — tampilkan hanya hasil scan terakhir (latestScanFindings)
-  const findings=as.running?[]:(as.latestScanFindings&&as.latestScanFindings.length?as.latestScanFindings:(as.recentFindings||[]));
-  document.getElementById('as-find-cnt').textContent=findings.length||'';
+  const allFindings=as.running?[]:(as.latestScanFindings&&as.latestScanFindings.length?as.latestScanFindings:(as.recentFindings||[]));
+  const findings=S._sevFilter&&S._sevFilter!=='ALL'?allFindings.filter(f=>f.severity===S._sevFilter):allFindings;
+  document.getElementById('as-find-cnt').textContent=findings.length+(S._sevFilter&&S._sevFilter!=='ALL'?` / ${allFindings.length}`:'');
+  // Highlight active sev filter button
+  ['ALL','CRITICAL','HIGH','MEDIUM'].forEach(s=>{const b=document.getElementById('sevf-'+s);if(b){b.style.fontWeight=(S._sevFilter||'ALL')===s?'700':'400';b.style.outline=(S._sevFilter||'ALL')===s?'2px solid var(--primary)':'none';}});
   const list=document.getElementById('as-findings-list');
   if(as.running) {
     list.innerHTML=`<div class="card empty"><div class="empty-icon">⏳</div><div class="empty-title">Scan sedang berjalan...</div><div class="empty-sub">Hasil scan sebelumnya dihapus. Temuan baru akan muncul setelah scan selesai.</div></div>`;
     return;
   }
   if(findings.length===0) {
-    list.innerHTML=`<div class="card empty"><div class="empty-icon">🤖</div><div class="empty-title">Belum ada temuan dari auto-scan</div><div class="empty-sub">${as.enabled?'Temuan baru akan muncul di sini setelah scan berjalan.':'Aktifkan auto-scan untuk mulai monitoring.'}</div></div>`;
+    const emptyMsg=S._sevFilter&&S._sevFilter!=='ALL'?`Tidak ada temuan dengan severity ${S._sevFilter}. <a href="#" onclick="setSevFilter('ALL');return false">Tampilkan semua</a>.`:(as.enabled?'Temuan baru akan muncul di sini setelah scan berjalan.':'Aktifkan auto-scan untuk mulai monitoring.');
+    list.innerHTML=`<div class="card empty"><div class="empty-icon">🤖</div><div class="empty-title">Belum ada temuan dari auto-scan</div><div class="empty-sub">${emptyMsg}</div></div>`;
     return;
   }
   list.innerHTML=findings.map((f,idx)=>{
@@ -1916,6 +1927,11 @@ async function changeWindow(days) {
     if(r.ok){ toast(`Window cari diubah ke ${days} hari ✓`); await fetchAutoScanStatus(); }
     else toast(d.error||'Gagal mengubah window.');
   } catch{ toast('Gagal menghubungi server.'); }
+}
+
+function setSevFilter(sev) {
+  S._sevFilter = sev;
+  renderAutoScan();
 }
 
 /* ── Custom Queries ──────────────────────────────────────────────────────────── */

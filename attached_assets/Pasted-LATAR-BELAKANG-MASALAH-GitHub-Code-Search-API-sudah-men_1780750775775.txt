@@ -1,0 +1,127 @@
+LATAR BELAKANG MASALAH:
+- GitHub Code Search API sudah menghapus fitur sorting by date sejak Maret 2023
+- Parameter sort=indexed dan order=desc diabaikan oleh API
+- API hanya mengembalikan "best match" yang campuran lama dan baru
+- Token GitHub hanya menaikkan rate limit, TIDAK bisa mengembalikan fitur sorting
+
+SOLUSI YANG DIBUTUHKAN:
+1. Ganti dari Code Search ke COMMIT SEARCH (masih bisa sorting by date)
+2. Tambahkan filter waktu pushed:>2025-05-01 ke setiap query
+3. Tambahkan filter kata kunci negatif NOT test NOT example NOT dummy
+4. Tambahkan validasi format credential dengan regex sebelum simpan
+5. Tambahkan dork crypto spesifik
+
+SPESIFIKASI TEKNIS LENGKAP:
+
+┌─────────────────────────────────────────────────────────────┐
+│ A. GANTI KE COMMIT SEARCH API                               │
+├─────────────────────────────────────────────────────────────┤
+│ URL: https://api.github.com/search/commits                  │
+│ Method: GET                                                 │
+│ Header: Accept: application/vnd.github.cloak-preview       │
+│ Header: Authorization: token ${GITHUB_TOKEN}               │
+│ Parameter: q={query}&sort=author-date&order=desc&per_page=30│
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ B. FILTER WAJIB UNTUK SETIAP QUERY                          │
+├─────────────────────────────────────────────────────────────┤
+│ WAJIB ditambahkan ke semua query:                           │
+│                                                              │
+│ pushed:>2025-05-01 NOT test NOT example NOT dummy           │
+│ NOT sample NOT your_ NOT changeme NOT 123456                │
+│                                                              │
+│ Contoh query final:                                          │
+│ "remove .env" pushed:>2025-05-01 NOT test NOT example       │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ C. DORK CRYPTO YANG HARUS DITAMBAHKAN                       │
+├─────────────────────────────────────────────────────────────┤
+│ PRIVATE KEYS:                                               │
+│ - filename:.env PRIVATE_KEY 0x                              │
+│ - "BEGIN PRIVATE KEY" extension:pem                         │
+│ - extension:json privateKey 0x                              │
+│                                                              │
+│ SEED PHRASES:                                               │
+│ - filename:.env MNEMONIC                                    │
+│ - filename:.env SEED_PHRASE                                 │
+│ - mnemonic extension:json NOT test                          │
+│                                                              │
+│ COMMIT HISTORY (PALING PENTING):                            │
+│ - "remove .env"                                             │
+│ - "removed .env"                                            │
+│ - "delete .env"                                             │
+│ - "update .env"                                             │
+│ - "updated .env"                                            │
+│ - "diff --git a/.env b/.env"                                │
+│                                                              │
+│ EXCHANGE API:                                               │
+│ - filename:.env BINANCE_API_KEY                             │
+│ - filename:.env COINBASE_API_SECRET                         │
+│ - filename:.env KRAKEN_API_KEY                              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ D. VALIDASI FORMAT (REGEX) SEBELUM SIMPAN                   │
+├─────────────────────────────────────────────────────────────┤
+│ Ethereum Private Key: /^0x[a-fA-F0-9]{64}$/                 │
+│ Raw 64 hex: /^[a-fA-F0-9]{64}$/                             │
+│ Seed 12 kata: /([a-z]+ ){11}[a-z]+/                         │
+│ Seed 24 kata: /([a-z]+ ){23}[a-z]+/                         │
+│ Binance API Key: /^BNB[A-Z0-9]{32}$/                        │
+│ Stripe Live: /^sk_live_[A-Za-z0-9]{24,}$/                   │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ E. CONFIDENCE SCORING (0-100)                               │
+├─────────────────────────────────────────────────────────────┤
+│ Start: 50                                                   │
+│ +30 jika path mengandung: production, live, mainnet         │
+│ +20 jika extension: .env, .key, .pem, .secret              │
+│ -30 jika path mengandung: test, example, sample, demo       │
+│ -20 jika repo mengandung: backup, old, archive, fork        │
+│ +10 jika file size < 5KB                                    │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ F. FITUR YANG HARUS DITAMBAHKAN KE DASHBOARD                │
+├─────────────────────────────────────────────────────────────┤
+│ 1. Pilihan mode: [Code Search] atau [Commit Search]         │
+│ 2. Slider filter umur: 7 hari / 30 hari / 90 hari           │
+│ 3. Tombol export hasil ke CSV dan JSON                      │
+│ 4. Tampilkan confidence score di tabel hasil                │
+│ 5. Filter hasil berdasarkan severity (CRITICAL/HIGH/MEDIUM) │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ G. ERROR HANDLING                                           │
+├─────────────────────────────────────────────────────────────┤
+│ - Rate limit 403: tunggu sesuai x-ratelimit-reset + 5 detik │
+│ - Token invalid 401: pindah ke token cadangan               │
+│ - Timeout: retry 3 kali dengan exponential backoff          │
+│ - Tidak ada hasil: jangan simpan, lanjut ke query berikutnya│
+└─────────────────────────────────────────────────────────────┘
+
+PERINTAH KODING:
+
+Tuliskan ulang seluruh kode aplikasi GtSearch dengan:
+
+1. Mengganti semua endpoint dari /search/code ke /search/commits
+2. Menambahkan semua filter wajib ke setiap query
+3. Mengimplementasikan validasi regex sebelum menyimpan hasil
+4. Menambahkan 20+ dork crypto ke daftar query default
+5. Menambahkan confidence scoring
+6. Memperbarui dashboard UI dengan fitur-fitur baru di atas
+
+FOKUS KE FILE-FILE INI:
+- artifacts/api-server/index.ts (utama)
+- package.json (update dependencies jika perlu)
+- index.html atau file frontend (update UI)
+
+Gunakan TypeScript untuk semua file backend. Pastikan token GitHub dibaca dari process.env.GITHUB_TOKEN. Tulis kode LENGKAP tanpa placeholder.
+
+SETELAH SELESAI, berikan instruksi singkat untuk:
+1. Menjalankan ulang aplikasi
+2. Menguji dengan query "remove .env"
+3. Mengecek apakah hasil sekarang lebih fresh (bukan dari tahun 2018-2022)

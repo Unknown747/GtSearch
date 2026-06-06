@@ -288,6 +288,8 @@ const CRITICAL_REGEXES: RegExp[] = [
   /xprv[A-Za-z0-9]{107}/,                          // BIP32 extended private key (xprv)
   /zprv[A-Za-z0-9]{107}/,                          // BIP84 extended private key (zprv)
   /\b[1-9A-HJ-NP-Za-km-z]{87,88}\b/,              // Solana keypair (base58, 64 bytes)
+  /sk_live_[A-Za-z0-9]{24,}/,                      // Stripe live secret key
+  /rk_live_[A-Za-z0-9]{24,}/,                      // Stripe live restricted key
 ];
 
 /**
@@ -329,6 +331,11 @@ function extractValuePreview(snippet: string, _filePath: string): string {
     { re: /[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/, label: "BTC WIF",  censor: m => m.slice(0, 4)  + "..." + m.slice(-4) },
     { re: /\b[1-9A-HJ-NP-Za-km-z]{87,88}\b/, label: "Solana Key", censor: m => m.slice(0, 4) + "..." + m.slice(-4) },
   ];
+  // Add Stripe to value preview patterns
+  (patterns as Array<{ re: RegExp; label: string; censor: (m: string) => string }>).push(
+    { re: /sk_live_[A-Za-z0-9]{24,}/, label: "Stripe Live", censor: m => m.slice(0, 12) + "..." + m.slice(-4) },
+    { re: /rk_live_[A-Za-z0-9]{24,}/, label: "Stripe RK",   censor: m => m.slice(0, 12) + "..." + m.slice(-4) },
+  );
   for (const { re, label, censor } of patterns) {
     const m = snippet.match(re);
     if (m) return `${label}: ${censor(m[0])}`;
@@ -360,30 +367,48 @@ function extractValuePreview(snippet: string, _filePath: string): string {
  * Computes a 0–100 confidence score for a finding based on multiple signals.
  * Higher = more likely a real secret, not a placeholder or test file.
  */
-function confidenceScore(filePath: string, snippet: string, sev: string): number {
-  let score = 0;
-  // Base from severity
-  if (sev === "CRITICAL") score += 50;
-  else if (sev === "HIGH") score += 30;
-  else score += 10;
+function confidenceScore(filePath: string, snippet: string, sev: string, repoFullName = ""): number {
+  // Base score per spec: start at 50
+  let score = 50;
 
-  // Regex-confirmed key format (+25)
-  if (CRITICAL_REGEXES.some(re => re.test(snippet))) score += 25;
+  // Adjust by severity
+  if (sev === "CRITICAL") score += 0;      // already at 50 baseline
+  else if (sev === "HIGH") score -= 15;
+  else if (sev === "MEDIUM") score -= 25;
+  else score -= 35;                         // LOW
 
-  // Not a placeholder (-20)
-  if (!isPlaceholderValue(snippet)) score += 10;
-  else score -= 20;
+  // Regex-confirmed key format (+20 — spec: regex validation boosts confidence)
+  if (CRITICAL_REGEXES.some(re => re.test(snippet))) score += 20;
 
-  // Not a test/example file (+10 / -15)
-  if (!isExampleOrTestFile(filePath)) score += 10;
-  else score -= 15;
+  const loPath = filePath.toLowerCase();
+  const loRepo = repoFullName.toLowerCase();
+
+  // +30 if path contains production/live/mainnet keywords (spec)
+  if (loPath.includes("production") || loPath.includes("mainnet") ||
+      loPath.includes("live") || loPath.includes("prod")) score += 30;
+
+  // +20 if extension is .env, .key, .pem, .secret (spec)
+  if (loPath.endsWith(".env") || loPath.endsWith(".key") ||
+      loPath.endsWith(".pem") || loPath.endsWith(".secret") ||
+      loPath.includes(".env.")) score += 20;
+
+  // -30 if path contains test/example/sample/demo (spec)
+  if (loPath.includes("test") || loPath.includes("example") ||
+      loPath.includes("sample") || loPath.includes("demo")) score -= 30;
+
+  // -20 if repo name contains backup/old/archive/fork (spec)
+  if (loRepo.includes("backup") || loRepo.includes("archive") ||
+      loRepo.includes("-old") || loRepo.includes("_old") ||
+      loRepo.includes("fork")) score -= 20;
+
+  // Not a placeholder — additional deduction if it is one
+  if (isPlaceholderValue(snippet)) score -= 25;
+
+  // Not a test/example template file (extra check beyond path)
+  if (isExampleOrTestFile(filePath)) score -= 10;
 
   // Real assignment pattern present (+5)
   if (/[=:]\s*["']?[0-9a-zA-Z+/]{20,}/.test(snippet)) score += 5;
-
-  // Path hints it's a real config file (+5)
-  const lo = filePath.toLowerCase();
-  if (lo.includes(".env") || lo.includes("config") || lo.includes("secret") || lo.includes("credential")) score += 5;
 
   return Math.max(0, Math.min(100, score));
 }
@@ -846,6 +871,24 @@ const AUTO_SCAN_QUERIES: Array<{ label: string; q: string }> = [
   { label: "commit: hotfix key",         q: '"hotfix" "key" OR "quick fix" "token" OR "urgent" "key"' },
   { label: "commit: pinata key",         q: '"PINATA_API_KEY" OR "pinata key" OR "PINATA_SECRET"' },
   { label: "commit: add gemini key",     q: '"GEMINI_API_KEY" OR "gemini key" OR "gemini api"' },
+
+  // ── Accidental .env commit history (PALING PENTING — spec) ───────────────
+  { label: "commit: remove .env",        q: '"remove .env" OR "removed .env"' },
+  { label: "commit: delete .env",        q: '"delete .env" OR "deleted .env"' },
+  { label: "commit: update .env",        q: '"update .env" OR "updated .env"' },
+  { label: "commit: diff .env",          q: '"diff --git a/.env b/.env"' },
+  { label: "commit: gitignore .env",     q: '"add .env to gitignore" OR ".env to .gitignore" OR "gitignore env"' },
+  { label: "commit: fix .env",           q: '"fix .env" OR "fixed .env" OR "revert .env"' },
+
+  // ── Exchange API keys — Binance / Coinbase / Kraken (spec) ───────────────
+  { label: "commit: add coinbase key",   q: '"coinbase api" OR "COINBASE_API_SECRET" OR "COINBASE_API_KEY"' },
+  { label: "commit: add kraken key",     q: '"kraken api" OR "KRAKEN_API_KEY" OR "kraken key"' },
+  { label: "commit: add mexc key",       q: '"MEXC_API_KEY" OR "mexc api" OR "mexc secret"' },
+  { label: "commit: add gate key",       q: '"GATE_API_KEY" OR "gateio api" OR "gate.io key"' },
+
+  // ── Stripe / Payment keys (spec — sk_live_) ───────────────────────────────
+  { label: "commit: add stripe key",     q: '"sk_live_" OR "STRIPE_SECRET_KEY" OR "stripe secret"' },
+  { label: "commit: add paypal key",     q: '"PAYPAL_SECRET" OR "paypal client secret" OR "paypal api"' },
 ];
 
 export interface AutoScanFinding {
@@ -1205,11 +1248,15 @@ async function runAutoScan(): Promise<void> {
       tokensInUse.add(token);
 
       try {
-        // ── Commit search: native date filter, full repo metadata ─────────────
+        // ── Commit search: native date filter + mandatory noise exclusions ───
         const windowDays = queryWindowDays(label);
         const sinceDate = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000)
           .toISOString().slice(0, 10); // YYYY-MM-DD
-        const qWithDate = `${q} committer-date:>${sinceDate}`;
+        // Mandatory negative filters (spec): exclude dummy/placeholder/test commits
+        // Note: -test / -example excluded here because some crypto queries intentionally
+        // search test-adjacent keywords; -dummy/-sample are safe to always exclude.
+        const MANDATORY_NEG = "-dummy -sample -changeme -placeholder -yourkey -123456";
+        const qWithDate = `${q} committer-date:>${sinceDate} ${MANDATORY_NEG}`;
         const url = `https://api.github.com/search/commits?q=${encodeURIComponent(qWithDate)}&per_page=30&page=1&sort=committer-date&order=desc`;
         const headers: Record<string, string> = {
           Authorization: `token ${token}`,
@@ -1611,7 +1658,7 @@ router.get("/github/search", async (req, res) => {
       const snippet = item.text_matches?.[0]?.fragment ?? "";
       const sev = severity(item.path, snippet);
       const vp = extractValuePreview(snippet, item.path);
-      const baseConf = confidenceScore(item.path, snippet, sev);
+      const baseConf = confidenceScore(item.path, snippet, sev, item.repository?.full_name ?? "");
       return { ...item, severity: sev, snippet, valuePreview: vp, confidence: baseConf, aiValidated: false, aiType: undefined as string | undefined, mode: "code" };
     });
 
