@@ -975,6 +975,7 @@ const S = {
   activeMode: 'commits',
   seenUrls: new Set(),
   ignoredUrls: new Set(JSON.parse(localStorage.getItem('gh_dork_ignored')||'[]')),
+  _sevFilter: 'ALL',
 };
 
 /* ── Severity (client-side — mirrors server-side classifier) ─────────────────── */
@@ -989,6 +990,8 @@ const SECRET_REGEXES=[
   /xprv[A-Za-z0-9]{107}/,                         // BIP32 extended private key (xprv)
   /zprv[A-Za-z0-9]{107}/,                         // BIP84 extended private key (zprv)
   /\b[1-9A-HJ-NP-Za-km-z]{87,88}\b/,             // Solana keypair (base58, 64 bytes)
+  /sk_live_[A-Za-z0-9]{24,}/,                     // Stripe live secret key
+  /rk_live_[A-Za-z0-9]{24,}/,                     // Stripe live restricted key
 ];
 function severity(path, snippet) {
   const raw=path+' '+snippet;
@@ -1581,7 +1584,8 @@ function renderAutoScan() {
     list.innerHTML=`<div class="card empty"><div class="empty-icon">🤖</div><div class="empty-title">Belum ada temuan dari auto-scan</div><div class="empty-sub">${emptyMsg}</div></div>`;
     return;
   }
-  list.innerHTML=findings.map((f,idx)=>{
+  list.innerHTML=findings.map((f)=>{
+    const idx=allFindings.indexOf(f);
     const d=new Date(f.ts).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
     const fUrl=esc(f.fileUrl);
     const vpHtml=f.valuePreview?`<div class="val-preview-wrap"><span class="val-preview" onclick="copyText(${JSON.stringify(f.valuePreview)});event.stopPropagation()" title="Klik untuk salin"><span class="val-preview-label">🔑 Value:&nbsp;</span>${esc(f.valuePreview)}<span class="val-preview-copy">⎘ salin</span></span></div>`:'';
@@ -1931,6 +1935,18 @@ async function changeWindow(days) {
 
 function setSevFilter(sev) {
   S._sevFilter = sev;
+  // Update button active classes immediately (before re-render)
+  document.getElementById('sevf-ALL').className='btn '+(sev==='ALL'?'btn-primary':'btn-outline');
+  const sevColors={CRITICAL:'#f87171',HIGH:'#fb923c',MEDIUM:'#fbbf24'};
+  ['CRITICAL','HIGH','MEDIUM'].forEach(s=>{
+    const b=document.getElementById('sevf-'+s);
+    if(!b) return;
+    b.className='btn btn-outline';
+    b.style.borderColor=sev===s?sevColors[s]:'';
+    b.style.color=sev===s?sevColors[s]:'';
+    b.style.boxShadow=sev===s?`0 0 0 2px ${sevColors[s]}40`:'';
+    b.style.fontWeight=sev===s?'700':'400';
+  });
   renderAutoScan();
 }
 
@@ -2142,8 +2158,8 @@ function bulkClearSel() {
   updateBulkBar();
 }
 async function bulkBlock() {
-  const findings = S.autoScan?.recentFindings || [];
-  const repos = [...new Set([...asSel].map(i=>findings[i]?.repo).filter(Boolean))];
+  const allFinds = (S.autoScan?.latestScanFindings?.length ? S.autoScan.latestScanFindings : S.autoScan?.recentFindings) || [];
+  const repos = [...new Set([...asSel].map(i=>allFinds[i]?.repo).filter(Boolean))];
   if(!repos.length){ toast('Tidak ada repo valid dipilih.'); return; }
   let ok=0;
   for(const repo of repos){

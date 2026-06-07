@@ -330,12 +330,9 @@ function extractValuePreview(snippet: string, _filePath: string): string {
     { re: /ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}/, label: "NEAR Key", censor: m => m.slice(0, 12) + "..." + m.slice(-4) },
     { re: /[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/, label: "BTC WIF",  censor: m => m.slice(0, 4)  + "..." + m.slice(-4) },
     { re: /\b[1-9A-HJ-NP-Za-km-z]{87,88}\b/, label: "Solana Key", censor: m => m.slice(0, 4) + "..." + m.slice(-4) },
+    { re: /sk_live_[A-Za-z0-9]{24,}/,       label: "Stripe Live", censor: m => m.slice(0, 12) + "..." + m.slice(-4) },
+    { re: /rk_live_[A-Za-z0-9]{24,}/,       label: "Stripe RK",  censor: m => m.slice(0, 12) + "..." + m.slice(-4) },
   ];
-  // Add Stripe to value preview patterns
-  (patterns as Array<{ re: RegExp; label: string; censor: (m: string) => string }>).push(
-    { re: /sk_live_[A-Za-z0-9]{24,}/, label: "Stripe Live", censor: m => m.slice(0, 12) + "..." + m.slice(-4) },
-    { re: /rk_live_[A-Za-z0-9]{24,}/, label: "Stripe RK",   censor: m => m.slice(0, 12) + "..." + m.slice(-4) },
-  );
   for (const { re, label, censor } of patterns) {
     const m = snippet.match(re);
     if (m) return `${label}: ${censor(m[0])}`;
@@ -1060,12 +1057,12 @@ function queryPriority(label: string): number {
   return 2;
 }
 
-/** Per-query incremental window: scan from last hit date (min 3d, max 30d). */
+/** Per-query incremental window: scan from last hit date (min 3d, max currentScanWindowDays). */
 function queryWindowDays(label: string): number {
   const stats = queryStats.get(label);
   if (stats?.lastHitAt) {
     const daysSince = Math.ceil((Date.now() - stats.lastHitAt) / (24 * 60 * 60 * 1000));
-    return Math.max(3, Math.min(daysSince + 1, 30));
+    return Math.max(3, Math.min(daysSince + 1, currentScanWindowDays));
   }
   return currentScanWindowDays;
 }
@@ -1204,13 +1201,14 @@ async function runAutoScan(): Promise<void> {
 
       if (autoScanState.strictMode && sev !== "CRITICAL") continue;
 
+      const commitPath = `commit:${item.sha.slice(0, 7)} — ${msg.split("\n")[0].slice(0, 80)}`;
       const finding: AutoScanFinding = {
         ts: Date.now(), severity: sev,
         repo: item.repository.full_name,
-        path: `commit:${item.sha.slice(0, 7)} — ${msg.split("\n")[0].slice(0, 80)}`,
+        path: commitPath,
         fileUrl: item.html_url, query: q, queryLabel: label,
         valuePreview: "",
-        confidence: sev === "CRITICAL" ? 75 : 55,
+        confidence: confidenceScore(commitPath, snippet, sev, item.repository.full_name),
       };
       newFindings.push(finding);
       autoScanState.recentFindings.unshift(finding);
